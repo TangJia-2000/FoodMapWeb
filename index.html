@@ -144,10 +144,15 @@
     <div id="installInstructions" class="install-instructions"></div>
   </dialog>
 
+  <dialog id="clearNoteDialog" class="sheet-dialog confirm-dialog" aria-labelledby="clearNoteTitle">
+    <div class="sheet-handle"></div>
+    <div class="dialog-heading"><p class="eyebrow">本地备注</p><h2 id="clearNoteTitle">确定要清空这家店的备注吗？</h2></div>
+    <div class="dialog-actions"><button id="cancelClearNoteBtn" class="secondary-btn" type="button">取消</button><button id="confirmClearNoteBtn" class="primary-btn" type="button">确认清空</button></div>
+  </dialog>
+
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="./config.runtime.js"></script>
   <script src="./config.js"></script>
-  <script src="./data/embedded-data.js"></script>
   <script src="./core.js"></script>
   <script src="./app.js"></script>
 </body>
