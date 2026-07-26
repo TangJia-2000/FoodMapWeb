@@ -6,8 +6,8 @@ const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
 const state = {
   records: [], filtered: [], favorites: new Set(JSON.parse(localStorage.getItem('wfm:favorites') || '[]')),
   view: 'map', search: '', category: '', district: '', recommend: '', price: '', geoOnly: false,
-  sort: 'recommend', location: null, amap: null, map: null, markers: [], markerCluster: null, locationMarker: null,
-  deferredInstallPrompt: null, selectedId: null, initialFitDone: false, scrolls: {map:0,list:0,favorites:0}
+  sort: 'recommend', location: null, amap: null, map: null, markers: [], markerById: new Map(), locationMarker: null,
+  deferredInstallPrompt: null, selectedId: null, initialFitDone: false, mapReady:false, route:null, routeRecord:null, scrolls: {map:0,list:0,favorites:0}
 };
 
 const categoryEmoji = {
@@ -105,12 +105,13 @@ function openDetail(id){
     <div class="detail-grid"><div class="detail-cell"><span>人均</span><strong>${formatPrice(r)}</strong></div><div class="detail-cell"><span>离我距离</span><strong>${formatDistance(dist)}</strong></div><div class="detail-cell"><span>地址</span><strong>${escapeHtml(r.address||'待补充')}</strong></div><div class="detail-cell"><span>包间</span><strong>${escapeHtml(r.privateRoom||'未记录')}</strong></div></div>
     ${r.feature?`<section class="detail-section"><h3>特色菜</h3><p>${escapeHtml(r.feature)}</p></section>`:''}
     ${r.reason?`<section class="detail-section"><h3>推荐理由</h3><p>${escapeHtml(r.reason)}</p></section>`:''}
-    <div class="detail-actions"><button id="favoriteDetailBtn" type="button">${isFav?'★ 已收藏':'☆ 收藏'}</button><button id="copyAddressBtn" type="button">复制地址</button><button id="openMapChooserBtn" class="wide" type="button">打开地图软件去这里</button></div>`;
+    <div class="detail-actions"><button id="favoriteDetailBtn" type="button">${isFav?'★ 已收藏':'☆ 收藏'}</button><button id="copyAddressBtn" type="button">复制地址</button>${hasCoords(r)?'<button id="routeBtn" type="button">站内路线</button>':''}<button id="openMapChooserBtn" class="wide" type="button">打开地图软件去这里</button></div>`;
   $('#favoriteDetailBtn').addEventListener('click',()=>{ toggleFavorite(id); openDetail(id); });
   $('#copyAddressBtn').addEventListener('click',()=>copyText([r.name,r.address].filter(Boolean).join('，')));
   $('#openMapChooserBtn').addEventListener('click',()=>openMapChooser(r));
+  $('#routeBtn')?.addEventListener('click',()=>startRoute(r));
   openDialog('detailDialog');
-  if(state.map && hasCoords(r)){ state.map.setZoomAndCenter(16,[Number(r.longitude),Number(r.latitude)],false,400); }
+  if(state.map && hasCoords(r)){ selectMarker(r.id); state.map.setZoomAndCenter(16,normalizedPosition(r),false,400); }
   const shareUrl=new URL(location.href); shareUrl.searchParams.set('place',String(id)); history.replaceState(null,'',shareUrl);
 }
 function openMapChooser(record){
@@ -144,40 +145,59 @@ function renderBarStats(target,field){
 
 async function loadAmap(){
   const geoCount=state.records.filter(hasCoords).length;
-  if(!CONFIG.amapJsKey || !CONFIG.amapSecurityJsCode){ showMapFallback('地图功能待配置',`当前已有 ${geoCount} 条坐标。填写高德 JS API Key 后即可显示地图。`); return; }
+  if(!CONFIG.amapJsKey || !CONFIG.amapSecurityJsCode){ showMapFallback('地图暂时不可用','地图配置缺失，请稍后重试。'); return; }
   try{
     window._AMapSecurityConfig={securityJsCode:CONFIG.amapSecurityJsCode};
     if(!window.AMapLoader){ await loadScript('https://webapi.amap.com/loader.js'); }
-    const AMap=await window.AMapLoader.load({key:CONFIG.amapJsKey,version:'2.0',plugins:['AMap.Scale','AMap.ToolBar','AMap.Geolocation','AMap.MarkerCluster']});
+    const AMap=await window.AMapLoader.load({key:CONFIG.amapJsKey,version:'2.0',plugins:['AMap.Scale','AMap.ToolBar','AMap.Geolocation','AMap.Walking','AMap.Driving']});
     state.amap=AMap; state.map=new AMap.Map('map',{zoom:CONFIG.zoom||11,center:CONFIG.center||[114.305393,30.593099],viewMode:'2D',resizeEnable:true});
     state.map.addControl(new AMap.Scale()); state.map.addControl(new AMap.ToolBar({position:{top:'70px',right:'12px'}}));
-    $('#mapFallback').classList.add('hidden'); renderMapMarkers();
+    state.map.on('complete',()=>{ state.mapReady=true; $('#mapFallback').classList.add('hidden'); renderMapMarkers(); });
     $('#mapStatus').textContent=geoCount?`已加载 ${geoCount} 个餐厅坐标`:'地图已启用，餐厅坐标仍待匹配'; setTimeout(()=>$('#mapStatus').textContent='',2500);
   }catch(e){ console.error(e); showMapFallback('地图加载失败','请检查高德 Key、安全密钥、域名白名单和网络。'); }
 }
 function loadScript(src){ return new Promise((resolve,reject)=>{ const s=document.createElement('script'); s.src=src; s.onload=resolve; s.onerror=reject; document.head.appendChild(s); }); }
 function showMapFallback(title,text){ $('#mapFallbackTitle').textContent=title; $('#mapFallbackText').textContent=text; $('#mapFallback').classList.remove('hidden'); }
 function clearMapMarkers(){
-  if(state.markerCluster){ state.markerCluster.setMap(null); state.markerCluster=null; }
   if(state.map && state.markers.length) state.map.remove(state.markers);
-  state.markers=[];
+  state.markers=[]; state.markerById.clear();
+}
+function normalizedPosition(record){
+  if(!hasCoords(record)) return null;
+  const lng=Number(record.longitude),lat=Number(record.latitude);
+  return Number.isFinite(lng)&&Number.isFinite(lat)&&lng!==0&&lat!==0?[lng,lat]:null;
 }
 function renderMapMarkers(){
-  if(!state.map || !state.amap) return; clearMapMarkers();
-  const AMap=state.amap; const rows=state.filtered.filter(hasCoords);
-  state.markers=rows.map(r=>{
-    const dot=document.createElement('button'); dot.type='button'; dot.className='custom-map-marker'; dot.textContent=iconFor(r); dot.title=r.name;
-    Object.assign(dot.style,{width:'34px',height:'34px',border:'2px solid white',borderRadius:'13px',background:r.recommend==='必吃'?'#f36f3d':'#2d7d66',color:'white',boxShadow:'0 5px 12px rgba(30,45,35,.28)',fontSize:'16px',display:'grid',placeItems:'center'});
-    dot.addEventListener('click',()=>openDetail(r.id));
-    return new AMap.Marker({position:[Number(r.longitude),Number(r.latitude)],content:dot,offset:new AMap.Pixel(-17,-34),zIndex:220,anchor:'bottom-center',extData:{id:r.id}});
+  if(!state.map || !state.amap || !state.mapReady) return; clearMapMarkers();
+  const AMap=state.amap; const rows=state.filtered.map(r=>({record:r,position:normalizedPosition(r)})).filter(row=>row.position);
+  state.markers=rows.map(({record,position})=>{
+    const marker=new AMap.Marker({position,zIndex:120,extData:{id:record.id}});
+    marker.on('click',()=>openDetail(record.id)); state.markerById.set(record.id,marker); return marker;
   });
-  if(state.markers.length){
-    try { state.markerCluster=new AMap.MarkerCluster(state.map,state.markers,{gridSize:72,maxZoom:16,averageCenter:true,zIndex:210}); }
-    catch { state.map.add(state.markers); $('#mapStatus').textContent=`已显示 ${state.markers.length} 个餐厅坐标`; }
-  }
+  if(state.markers.length) state.map.add(state.markers);
+  window.__FOOD_MAP_DIAGNOSTICS={filtered:state.filtered.length,validCoordinates:rows.length,pointData:rows.length,directMarkers:state.markers.length,cluster:false};
   if(state.markers.length && !state.initialFitDone){ state.map.setFitView(state.markers,false,[60,45,150,45],12); state.initialFitDone=true; }
 }
+function selectMarker(id){ const marker=state.markerById.get(id); if(!marker)return; marker.setzIndex(300); marker.setAnimation?.('AMAP_ANIMATION_BOUNCE'); setTimeout(()=>marker.setAnimation?.('AMAP_ANIMATION_NONE'),1400); }
 function fitMap(){ if(!state.map){ toast('地图尚未启用'); return; } if(state.markers.length) state.map.setFitView(state.markers,false,[60,45,150,45],12); else state.map.setZoomAndCenter(CONFIG.zoom||11,CONFIG.center); }
+function clearRoute(){ if(state.route){ state.route.clear?.(); state.route=null; } state.routeRecord=null; $('#routePanel').classList.add('hidden'); $('#routePanel').innerHTML=''; renderMapMarkers(); }
+async function startRoute(record,mode='walk'){
+  if(!state.map || !normalizedPosition(record)){ toast('该餐厅暂无可用坐标，请使用地图软件导航'); return; }
+  closeDialog('detailDialog'); setView('map');
+  if(!state.location){ await locateUser(); }
+  if(!state.location){ toast('定位失败，请使用地图软件导航'); return; }
+  clearRoute(); const AMap=state.amap, target=normalizedPosition(record), Planner=mode==='drive'?AMap.Driving:AMap.Walking;
+  if(!Planner){ toast('路线服务暂不可用，请使用地图软件导航'); return; }
+  const panel=$('#routePanel'); panel.classList.remove('hidden'); panel.innerHTML=`<div><strong>站内路线：${escapeHtml(record.name)}</strong><span>正在规划${mode==='drive'?'驾车':'步行'}路线…</span></div><div class="route-actions"><button data-route-mode="walk">步行</button><button data-route-mode="drive">驾车</button><button id="exitRouteBtn">退出路线</button></div>`;
+  $$('#routePanel [data-route-mode]').forEach(button=>button.addEventListener('click',()=>startRoute(record,button.dataset.routeMode)));
+  $('#exitRouteBtn').addEventListener('click',clearRoute);
+  state.route=new Planner({map:state.map,autoFitView:true}); state.routeRecord=record;
+  state.route.search([state.location.lng,state.location.lat],target,(status,result)=>{
+    if(status!=='complete'){ panel.querySelector('span').textContent='路线规划失败，请使用地图软件导航'; return; }
+    const route=result.routes?.[0]||result.route; const distance=route?.distance, duration=route?.time;
+    panel.querySelector('span').textContent=distance?`约 ${(distance/1000).toFixed(distance<1000?0:1)} km · 约 ${Math.max(1,Math.round((duration||0)/60))} 分钟`:'路线已规划';
+  });
+}
 async function locateUser(){
   $('#mapStatus').textContent='正在定位…';
   try{
@@ -214,7 +234,7 @@ function bindEvents(){
   $('#applyFiltersBtn').addEventListener('click',applyFilterDialog); $('#clearFiltersDialogBtn').addEventListener('click',clearFilters); $('#resetFiltersBtn').addEventListener('click',clearFilters);
   $('#sortSelect').addEventListener('change',e=>{ state.sort=e.target.value; sortRecords(); renderAll(); });
   $('#randomBtn').addEventListener('click',randomRestaurant); $('#locateBtn').addEventListener('click',locateUser); $('#fitMapBtn').addEventListener('click',fitMap);
-  $('#shareBtn').addEventListener('click',shareApp); $('#openSetupBtn').addEventListener('click',()=>openDialog('setupDialog'));
+  $('#shareBtn').addEventListener('click',shareApp);
   $('#clearFavoritesBtn').addEventListener('click',()=>{ if(state.favorites.size && confirm('清空当前设备上的全部收藏？')){ state.favorites.clear(); saveFavorites(); renderAll(); }});
   $('#cancelMapChooserBtn').addEventListener('click',()=>closeDialog('mapChooserDialog'));
   $$('.nav-btn').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view)));

@@ -33,7 +33,7 @@
         <input id="searchInput" type="search" placeholder="搜索店名、地址、特色菜…" autocomplete="off">
         <button id="clearSearchBtn" class="clear-btn hidden" type="button" aria-label="清空搜索">×</button>
       </label>
-      <button id="filterBtn" class="filter-btn" type="button">筛选 <span id="filterCount" class="count-badge hidden">0</span></button><button id="randomBtn" class="random-btn" type="button">随机一家</button>
+      <button id="filterBtn" class="filter-btn" type="button">筛选 <span id="filterCount" class="count-badge hidden">0</span></button><button id="randomBtn" class="random-btn" type="button" aria-label="随机一家" title="随机一家">🎲</button>
     </section>
     <p id="resultCount" class="result-count" aria-live="polite">当前结果：0 家</p>
 
@@ -47,8 +47,7 @@
           </div>
           <div class="fallback-copy">
             <strong id="mapFallbackTitle">地图功能待配置</strong>
-            <p id="mapFallbackText">填入高德 JS API Key 后即可显示底图；完成坐标匹配后即可显示餐厅点位。</p>
-            <button id="openSetupBtn" type="button">查看启用步骤</button>
+            <p id="mapFallbackText">地图暂时无法加载，请稍后重试。</p>
           </div>
         </div>
         <div class="map-actions">
@@ -56,6 +55,7 @@
           <button id="fitMapBtn" class="map-fab" type="button" aria-label="显示全部点位">⌗</button>
         </div>
         <div id="mapStatus" class="map-status" aria-live="polite"></div>
+        <section id="routePanel" class="route-panel hidden" aria-live="polite"></section>
         <div id="nearbyRail" class="nearby-rail" aria-label="附近餐厅"></div>
       </section>
 
@@ -126,18 +126,6 @@
     <div class="dialog-heading"><p class="eyebrow">地图导航</p><h2>打开地图软件去这里</h2></div>
     <div id="mapChooserOptions" class="map-chooser-options"></div>
     <button id="cancelMapChooserBtn" class="secondary-btn map-cancel" type="button">取消</button>
-  </dialog>
-
-  <dialog id="setupDialog" class="sheet-dialog setup-dialog">
-    <div class="sheet-handle"></div>
-    <button class="dialog-close" data-close-dialog="setupDialog" type="button" aria-label="关闭">×</button>
-    <div class="dialog-heading"><p class="eyebrow">地图启用</p><h2>还差两个配置步骤</h2></div>
-    <ol class="setup-steps">
-      <li><strong>配置网页地图</strong><span>在 <code>config.js</code> 中填入高德 JavaScript API Key 和 securityJsCode。</span></li>
-      <li><strong>批量匹配坐标</strong><span>申请高德 Web 服务 Key，运行 <code>tools/geocode_restaurants.py</code>。</span></li>
-      <li><strong>使用 HTTPS 发布</strong><span>正式部署后，定位和 PWA 安装功能才会完整启用。</span></li>
-    </ol>
-    <p class="help-note">完整命令和申请说明见项目中的 <b>README.md</b>。</p>
   </dialog>
 
   <dialog id="installDialog" class="sheet-dialog setup-dialog">

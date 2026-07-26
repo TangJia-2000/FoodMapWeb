@@ -1,4 +1,4 @@
-const CACHE_NAME = "food-map-v4-20260726";
+const CACHE_NAME = "food-map-v5-20260726";
 const APP_SHELL = ["./","./index.html","./styles.css","./app.js","./core.js","./config.js","./config.runtime.js","./manifest.webmanifest","./data/restaurants.json","./data/embedded-data.js","./assets/icons/icon-192.png","./assets/icons/icon-512.png"];
 self.addEventListener("install", event => { event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL))); self.skipWaiting(); });
 self.addEventListener("activate", event => { event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k=>k!==CACHE_NAME).map(k=>caches.delete(k))))); self.clients.claim(); });
