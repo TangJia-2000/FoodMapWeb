@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f36f3d">
+  <meta name="description" content="朋友共同整理的武汉美食地图：地图、筛选、距离、收藏与导航。">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="武汉美食地图">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
+  <link rel="icon" href="./assets/icons/icon-192.png">
+  <link rel="stylesheet" href="./styles.css">
+  <title>武汉美食地图</title>
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">朋友推荐数据库</p>
+        <h1>武汉美食地图</h1>
+      </div>
+      <div class="top-actions">
+        <button id="installBtn" class="icon-btn hidden" type="button" aria-label="安装到手机桌面" title="安装到手机桌面">＋</button>
+        <button id="shareBtn" class="icon-btn" type="button" aria-label="分享" title="分享">↗</button>
+      </div>
+    </header>
+
+    <section class="search-panel" aria-label="搜索和筛选">
+      <label class="search-box" for="searchInput">
+        <span aria-hidden="true">⌕</span>
+        <input id="searchInput" type="search" placeholder="搜索店名、地址、特色菜…" autocomplete="off">
+        <button id="clearSearchBtn" class="clear-btn hidden" type="button" aria-label="清空搜索">×</button>
+      </label>
+      <button id="filterBtn" class="filter-btn" type="button">筛选 <span id="filterCount" class="count-badge hidden">0</span></button>
+    </section>
+
+    <section class="summary-strip" aria-label="数据概览">
+      <div><strong id="resultCount">0</strong><span>当前结果</span></div>
+      <div><strong id="geoCount">0</strong><span>已有坐标</span></div>
+      <div><strong id="favCount">0</strong><span>我的收藏</span></div>
+      <button id="randomBtn" type="button"><strong>🎲</strong><span>随机一家</span></button>
+    </section>
+
+    <main class="content-shell">
+      <section id="mapView" class="view-pane map-pane active" aria-label="地图视图">
+        <div id="map" class="map-canvas" role="application" aria-label="武汉美食地图"></div>
+        <div id="mapFallback" class="map-fallback">
+          <div class="map-fallback-art" aria-hidden="true">
+            <span class="river river-a"></span><span class="river river-b"></span>
+            <i style="left:19%;top:28%"></i><i style="left:38%;top:49%"></i><i style="left:61%;top:31%"></i><i style="left:76%;top:58%"></i><i style="left:50%;top:73%"></i>
+          </div>
+          <div class="fallback-copy">
+            <strong id="mapFallbackTitle">地图功能待配置</strong>
+            <p id="mapFallbackText">填入高德 JS API Key 后即可显示底图；完成坐标匹配后即可显示餐厅点位。</p>
+            <button id="openSetupBtn" type="button">查看启用步骤</button>
+          </div>
+        </div>
+        <div class="map-actions">
+          <button id="locateBtn" class="map-fab" type="button" aria-label="定位到我">◎</button>
+          <button id="fitMapBtn" class="map-fab" type="button" aria-label="显示全部点位">⌗</button>
+        </div>
+        <div id="mapStatus" class="map-status" aria-live="polite"></div>
+        <div id="nearbyRail" class="nearby-rail" aria-label="附近餐厅"></div>
+      </section>
+
+      <section id="listView" class="view-pane list-pane" aria-label="列表视图">
+        <div class="list-toolbar">
+          <p id="resultHint">正在读取数据…</p>
+          <label>排序
+            <select id="sortSelect">
+              <option value="recommend">推荐优先</option>
+              <option value="distance">距离最近</option>
+              <option value="priceAsc">价格从低到高</option>
+              <option value="priceDesc">价格从高到低</option>
+              <option value="default">原表顺序</option>
+            </select>
+          </label>
+        </div>
+        <div id="restaurantList" class="restaurant-list"></div>
+        <div id="emptyState" class="empty-state hidden">
+          <div>🍽️</div><strong>没有匹配的餐厅</strong><p>试试清空搜索或减少筛选条件。</p>
+          <button id="resetFiltersBtn" type="button">清空筛选</button>
+        </div>
+      </section>
+
+      <section id="favoritesView" class="view-pane list-pane" aria-label="收藏视图">
+        <div class="section-title"><div><p class="eyebrow">保存在当前设备</p><h2>我的收藏</h2></div><button id="clearFavoritesBtn" class="text-btn" type="button">清空</button></div>
+        <div id="favoritesList" class="restaurant-list"></div>
+        <div id="favoritesEmpty" class="empty-state"><div>☆</div><strong>还没有收藏</strong><p>打开餐厅详情，点一下“收藏”即可。</p></div>
+      </section>
+
+      <section id="statsView" class="view-pane stats-pane" aria-label="统计视图">
+        <div class="section-title"><div><p class="eyebrow">现有数据库概览</p><h2>分类与地区</h2></div></div>
+        <div id="statsCards" class="stats-cards"></div>
+        <div class="chart-section"><h3>分类分布</h3><div id="categoryStats" class="bar-list"></div></div>
+        <div class="chart-section"><h3>地区分布</h3><div id="districtStats" class="bar-list"></div></div>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="主导航">
+      <button class="nav-btn active" data-view="map" type="button"><span>⌖</span><em>地图</em></button>
+      <button class="nav-btn" data-view="list" type="button"><span>☷</span><em>列表</em></button>
+      <button class="nav-btn" data-view="favorites" type="button"><span>☆</span><em>收藏</em></button>
+      <button class="nav-btn" data-view="stats" type="button"><span>▥</span><em>统计</em></button>
+    </nav>
+  </div>
+
+  <dialog id="detailDialog" class="sheet-dialog">
+    <div class="sheet-handle"></div>
+    <button class="dialog-close" data-close-dialog="detailDialog" type="button" aria-label="关闭">×</button>
+    <div id="detailContent"></div>
+  </dialog>
+
+  <dialog id="filterDialog" class="sheet-dialog filter-dialog">
+    <div class="sheet-handle"></div>
+    <button class="dialog-close" data-close-dialog="filterDialog" type="button" aria-label="关闭">×</button>
+    <div class="dialog-heading"><p class="eyebrow">缩小范围</p><h2>筛选餐厅</h2></div>
+    <div class="filter-grid">
+      <label>分类<select id="categoryFilter"><option value="">全部分类</option></select></label>
+      <label>地区<select id="districtFilter"><option value="">全部地区</option></select></label>
+      <label>推荐等级<select id="recommendFilter"><option value="">全部等级</option></select></label>
+      <label>人均价格<select id="priceFilter"><option value="">不限价格</option><option value="0-30">30 元以内</option><option value="30-80">30–80 元</option><option value="80-150">80–150 元</option><option value="150-99999">150 元以上</option></select></label>
+    </div>
+    <label class="switch-row"><input id="geoOnlyFilter" type="checkbox"><span>只显示已有地图坐标的餐厅</span></label>
+    <div class="dialog-actions"><button id="clearFiltersDialogBtn" class="secondary-btn" type="button">清空</button><button id="applyFiltersBtn" class="primary-btn" type="button">查看结果</button></div>
+  </dialog>
+
+  <dialog id="setupDialog" class="sheet-dialog setup-dialog">
+    <div class="sheet-handle"></div>
+    <button class="dialog-close" data-close-dialog="setupDialog" type="button" aria-label="关闭">×</button>
+    <div class="dialog-heading"><p class="eyebrow">地图启用</p><h2>还差两个配置步骤</h2></div>
+    <ol class="setup-steps">
+      <li><strong>配置网页地图</strong><span>在 <code>config.js</code> 中填入高德 JavaScript API Key 和 securityJsCode。</span></li>
+      <li><strong>批量匹配坐标</strong><span>申请高德 Web 服务 Key，运行 <code>tools/geocode_restaurants.py</code>。</span></li>
+      <li><strong>使用 HTTPS 发布</strong><span>正式部署后，定位和 PWA 安装功能才会完整启用。</span></li>
+    </ol>
+    <p class="help-note">完整命令和申请说明见项目中的 <b>README.md</b>。</p>
+  </dialog>
+
+  <dialog id="installDialog" class="sheet-dialog setup-dialog">
+    <div class="sheet-handle"></div>
+    <button class="dialog-close" data-close-dialog="installDialog" type="button" aria-label="关闭">×</button>
+    <div class="dialog-heading"><p class="eyebrow">添加到手机桌面</p><h2 id="installTitle">安装说明</h2></div>
+    <div id="installInstructions" class="install-instructions"></div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="./config.runtime.js"></script>
+  <script src="./config.js"></script>
+  <script src="./data/embedded-data.js"></script>
+  <script src="./core.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
