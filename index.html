@@ -53,6 +53,7 @@
         <div class="map-actions">
           <button id="locateBtn" class="map-fab" type="button" aria-label="定位到我">◎</button>
           <button id="fitMapBtn" class="map-fab" type="button" aria-label="显示全部点位">⌗</button>
+          <button id="openMapListBtn" class="map-fab" type="button" aria-label="纵向查看店铺" title="查看全部店铺">☷</button>
         </div>
         <div id="mapStatus" class="map-status" aria-live="polite"></div>
         <section id="routePanel" class="route-panel hidden" aria-live="polite"></section>
@@ -126,6 +127,13 @@
     <div class="dialog-heading"><p class="eyebrow">地图导航</p><h2>打开地图软件去这里</h2></div>
     <div id="mapChooserOptions" class="map-chooser-options"></div>
     <button id="cancelMapChooserBtn" class="secondary-btn map-cancel" type="button">取消</button>
+  </dialog>
+
+  <dialog id="mapListDialog" class="sheet-dialog map-list-dialog">
+    <div class="sheet-handle"></div><button class="dialog-close" data-close-dialog="mapListDialog" type="button" aria-label="关闭">×</button>
+    <div class="dialog-heading"><p class="eyebrow">地图结果</p><h2 id="mapListTitle">当前结果 0 家</h2></div>
+    <div id="mapListContent" class="restaurant-list"></div>
+    <div id="mapListEmpty" class="empty-state hidden"><div>🍽️</div><strong>没有匹配的餐厅</strong><button id="mapListResetBtn" type="button">清空筛选</button></div>
   </dialog>
 
   <dialog id="installDialog" class="sheet-dialog setup-dialog">

@@ -7,7 +7,8 @@ const state = {
   records: [], filtered: [], favorites: new Set(JSON.parse(localStorage.getItem('wfm:favorites') || '[]')),
   view: 'map', search: '', category: '', district: '', recommend: '', price: '', geoOnly: false,
   sort: 'recommend', location: null, amap: null, map: null, markers: [], markerById: new Map(), locationMarker: null,
-  deferredInstallPrompt: null, selectedId: null, initialFitDone: false, mapReady:false, route:null, routeRecord:null, scrolls: {map:0,list:0,favorites:0}
+  deferredInstallPrompt: null, selectedId: null, initialFitDone: false, mapReady:false, route:null, routeRecord:null,
+  notes: JSON.parse(localStorage.getItem('foodmap.restaurantNotes.v1') || '{}'), scrolls: {map:0,list:0,favorites:0}
 };
 
 const categoryEmoji = {
@@ -46,26 +47,30 @@ function sortRecords(){
   else arr.sort((a,b)=>a.id-b.id);
 }
 
+function noteFor(id){ return String(state.notes[id]||''); }
+function saveNotes(){ localStorage.setItem('foodmap.restaurantNotes.v1',JSON.stringify(state.notes)); }
 function cardHtml(r){
   const dist=distanceFor(r);
   return `<button class="restaurant-card" type="button" data-id="${r.id}">
     <span class="food-icon">${iconFor(r)}</span>
     <span class="card-body"><span class="card-title-row"><strong>${escapeHtml(r.name)}</strong>${r.recommend?`<span class="tag ${recClass(r.recommend)}">${escapeHtml(r.recommend)}</span>`:''}</span>
-    <p>${escapeHtml([r.district,r.address].filter(Boolean).join(' · ') || '地点待补充')}</p><p>${escapeHtml(r.feature || r.cuisine || r.category)}</p></span>
+    <p>${escapeHtml([r.district,r.address].filter(Boolean).join(' · ') || '地点待补充')}</p><p>${escapeHtml(r.feature || r.cuisine || r.category)}</p>${state.view==='favorites'&&noteFor(r.id)?`<p class="note-summary">备注：${escapeHtml(noteFor(r.id))}</p>`:''}</span>
     <span class="card-side"><strong>${formatPrice(r)}</strong><span>${dist==null?(hasCoords(r)?'可定位后排序':'待匹配坐标'):formatDistance(dist)}</span></span>
   </button>`;
 }
-function renderList(target, records){
+function renderList(target, records, onSelect=id=>openDetail(id)){
   const el=$(target); el.innerHTML=records.map(cardHtml).join('');
-  $$('.restaurant-card',el).forEach(btn=>btn.addEventListener('click',()=>openDetail(Number(btn.dataset.id))));
+  $$('.restaurant-card',el).forEach(btn=>btn.addEventListener('click',()=>onSelect(Number(btn.dataset.id))));
 }
 function renderNearby(){
   let rows=state.filtered.filter(hasCoords);
   if(state.location) rows=[...rows].sort((a,b)=>distanceFor(a)-distanceFor(b));
   else rows=rows.slice(0,12);
-  $('#nearbyRail').innerHTML=rows.slice(0,10).map(r=>`<button class="nearby-card" type="button" data-id="${r.id}"><span class="row"><strong>${escapeHtml(r.name)}</strong><span>${formatPrice(r)}</span></span><p>${state.location?formatDistance(distanceFor(r)):escapeHtml(r.district||r.category)} · ${escapeHtml(r.feature||r.address||'查看详情')}</p></button>`).join('');
-  $$('.nearby-card').forEach(btn=>btn.addEventListener('click',()=>openDetail(Number(btn.dataset.id))));
+  $('#nearbyRail').innerHTML=rows.slice(0,10).map(r=>`<button class="nearby-card ${state.selectedId===r.id?'selected':''}" type="button" data-id="${r.id}"><span class="row"><strong>${escapeHtml(r.name)}</strong><span>${formatPrice(r)}</span></span><p>${state.location?formatDistance(distanceFor(r)):escapeHtml(r.district||r.category)} · ${escapeHtml(r.feature||r.address||'查看详情')}</p></button>`).join('');
+  $$('.nearby-card').forEach(btn=>bindMapCard(btn));
 }
+function selectRestaurant(id){ const r=state.records.find(row=>row.id===id); if(!r)return; if(state.selectedId===id){openDetail(id);return;} state.selectedId=id; if(hasCoords(r)){ selectMarker(id); state.map?.setZoomAndCenter(16,normalizedPosition(r)); }else toast('坐标待核实'); renderNearby(); }
+function bindMapCard(button){ let start; button.addEventListener('pointerdown',e=>{start={x:e.clientX,y:e.clientY};}); button.addEventListener('click',e=>{if(start&&Math.hypot(e.clientX-start.x,e.clientY-start.y)>10)return; selectRestaurant(Number(button.dataset.id));}); }
 function updateSummary(){
   const favRows=state.filtered.filter(r=>state.favorites.has(r.id));
   $('#resultCount').textContent=`当前结果：${state.view==='favorites'?favRows.length:state.filtered.length} 家`;
@@ -79,6 +84,7 @@ function renderAll(){
   $('#resultHint').textContent=`显示 ${state.filtered.length} / ${state.records.length} 家${state.location?' · 已按当前位置计算距离':''}`;
   const favRows=state.records.filter(r=>state.favorites.has(r.id));
   const filteredFavRows=state.filtered.filter(r=>state.favorites.has(r.id));
+  $('#favoritesView h2').textContent=`我的收藏 ${state.favorites.size}家`;
   renderList('#favoritesList',filteredFavRows); $('#favoritesList').classList.toggle('hidden',!filteredFavRows.length); $('#favoritesEmpty').classList.toggle('hidden',filteredFavRows.length>0);
   if(!filteredFavRows.length) $('#favoritesEmpty').querySelector('p').textContent=state.favorites.size?'当前搜索或筛选条件下没有收藏餐厅。':'打开餐厅详情，点一下“收藏”即可。';
   renderNearby(); renderMapMarkers();
@@ -105,11 +111,14 @@ function openDetail(id){
     <div class="detail-grid"><div class="detail-cell"><span>人均</span><strong>${formatPrice(r)}</strong></div><div class="detail-cell"><span>离我距离</span><strong>${formatDistance(dist)}</strong></div><div class="detail-cell"><span>地址</span><strong>${escapeHtml(r.address||'待补充')}</strong></div><div class="detail-cell"><span>包间</span><strong>${escapeHtml(r.privateRoom||'未记录')}</strong></div></div>
     ${r.feature?`<section class="detail-section"><h3>特色菜</h3><p>${escapeHtml(r.feature)}</p></section>`:''}
     ${r.reason?`<section class="detail-section"><h3>推荐理由</h3><p>${escapeHtml(r.reason)}</p></section>`:''}
-    <div class="detail-actions"><button id="favoriteDetailBtn" type="button">${isFav?'★ 已收藏':'☆ 收藏'}</button><button id="copyAddressBtn" type="button">复制地址</button>${hasCoords(r)?'<button id="routeBtn" type="button">站内路线</button>':''}<button id="openMapChooserBtn" class="wide" type="button">打开地图软件去这里</button></div>`;
+    <div class="detail-actions detail-utilities"><button id="favoriteDetailBtn" type="button">${isFav?'★ 已收藏':'☆ 收藏'}</button><button id="copyAddressBtn" type="button">复制地址</button></div><label class="note-editor">我的备注（仅保存在当前设备）<textarea id="noteInput" maxlength="200" placeholder="写下这家店的提醒或偏好…">${escapeHtml(noteFor(r.id))}</textarea><span id="noteRemaining">${200-noteFor(r.id).length} 字可用</span><button id="saveNoteBtn" type="button">保存备注</button><button id="clearNoteBtn" type="button">清空备注</button></label><div class="detail-actions nav-actions"><button id="openMapChooserBtn" type="button" aria-label="打开地图软件">打开地图软件</button><button id="routeBtn" type="button" aria-label="站内导航">站内导航</button></div>`;
   $('#favoriteDetailBtn').addEventListener('click',()=>{ toggleFavorite(id); openDetail(id); });
   $('#copyAddressBtn').addEventListener('click',()=>copyText([r.name,r.address].filter(Boolean).join('，')));
   $('#openMapChooserBtn').addEventListener('click',()=>openMapChooser(r));
-  $('#routeBtn')?.addEventListener('click',()=>startRoute(r));
+  $('#routeBtn').addEventListener('click',()=>startRoute(r));
+  $('#noteInput').addEventListener('input',e=>$('#noteRemaining').textContent=`${200-e.target.value.length} 字可用`);
+  $('#saveNoteBtn').addEventListener('click',()=>{const value=$('#noteInput').value.trim(); if(value)state.notes[r.id]=value;else delete state.notes[r.id];saveNotes();renderAll();toast('备注已保存');});
+  $('#clearNoteBtn').addEventListener('click',()=>{delete state.notes[r.id];saveNotes();openDetail(r.id);toast('备注已清空');});
   openDialog('detailDialog');
   if(state.map && hasCoords(r)){ selectMarker(r.id); state.map.setZoomAndCenter(16,normalizedPosition(r),false,400); }
   const shareUrl=new URL(location.href); shareUrl.searchParams.set('place',String(id)); history.replaceState(null,'',shareUrl);
@@ -149,7 +158,7 @@ async function loadAmap(){
   try{
     window._AMapSecurityConfig={securityJsCode:CONFIG.amapSecurityJsCode};
     if(!window.AMapLoader){ await loadScript('https://webapi.amap.com/loader.js'); }
-    const AMap=await window.AMapLoader.load({key:CONFIG.amapJsKey,version:'2.0',plugins:['AMap.Scale','AMap.ToolBar','AMap.Geolocation','AMap.Walking','AMap.Driving']});
+    const AMap=await window.AMapLoader.load({key:CONFIG.amapJsKey,version:'2.0',plugins:['AMap.Scale','AMap.ToolBar','AMap.Geolocation','AMap.Walking','AMap.Riding','AMap.Driving']});
     state.amap=AMap; state.map=new AMap.Map('map',{zoom:CONFIG.zoom||11,center:CONFIG.center||[114.305393,30.593099],viewMode:'2D',resizeEnable:true});
     state.map.addControl(new AMap.Scale()); state.map.addControl(new AMap.ToolBar({position:{top:'70px',right:'12px'}}));
     state.map.on('complete',()=>{ state.mapReady=true; $('#mapFallback').classList.add('hidden'); renderMapMarkers(); });
@@ -180,15 +189,15 @@ function renderMapMarkers(){
 }
 function selectMarker(id){ const marker=state.markerById.get(id); if(!marker)return; marker.setzIndex(300); marker.setAnimation?.('AMAP_ANIMATION_BOUNCE'); setTimeout(()=>marker.setAnimation?.('AMAP_ANIMATION_NONE'),1400); }
 function fitMap(){ if(!state.map){ toast('地图尚未启用'); return; } if(state.markers.length) state.map.setFitView(state.markers,false,[60,45,150,45],12); else state.map.setZoomAndCenter(CONFIG.zoom||11,CONFIG.center); }
-function clearRoute(){ if(state.route){ state.route.clear?.(); state.route=null; } state.routeRecord=null; $('#routePanel').classList.add('hidden'); $('#routePanel').innerHTML=''; renderMapMarkers(); }
+function clearRoute(){ if(state.route){ state.route.clear?.(); state.route=null; } state.routeRecord=null; $('#routePanel').classList.add('hidden'); $('#routePanel').innerHTML=''; renderMapMarkers(); if(state.selectedId)selectMarker(state.selectedId); }
 async function startRoute(record,mode='walk'){
   if(!state.map || !normalizedPosition(record)){ toast('该餐厅暂无可用坐标，请使用地图软件导航'); return; }
   closeDialog('detailDialog'); setView('map');
   if(!state.location){ await locateUser(); }
   if(!state.location){ toast('定位失败，请使用地图软件导航'); return; }
-  clearRoute(); const AMap=state.amap, target=normalizedPosition(record), Planner=mode==='drive'?AMap.Driving:AMap.Walking;
+  clearRoute(); clearMapMarkers(); const AMap=state.amap, target=normalizedPosition(record), Planner=mode==='drive'?AMap.Driving:mode==='ride'?AMap.Riding:AMap.Walking;
   if(!Planner){ toast('路线服务暂不可用，请使用地图软件导航'); return; }
-  const panel=$('#routePanel'); panel.classList.remove('hidden'); panel.innerHTML=`<div><strong>站内路线：${escapeHtml(record.name)}</strong><span>正在规划${mode==='drive'?'驾车':'步行'}路线…</span></div><div class="route-actions"><button data-route-mode="walk">步行</button><button data-route-mode="drive">驾车</button><button id="exitRouteBtn">退出路线</button></div>`;
+  const panel=$('#routePanel'); panel.classList.remove('hidden'); panel.innerHTML=`<div><strong>站内路线：${escapeHtml(record.name)}</strong><span>正在规划${mode==='drive'?'驾车':mode==='ride'?'骑行（电瓶车参考）':'步行'}路线…</span></div><div class="route-actions"><button data-route-mode="walk">步行</button><button data-route-mode="ride">骑行</button><button data-route-mode="drive">驾车</button><button id="exitRouteBtn">退出路线</button></div>`;
   $$('#routePanel [data-route-mode]').forEach(button=>button.addEventListener('click',()=>startRoute(record,button.dataset.routeMode)));
   $('#exitRouteBtn').addEventListener('click',clearRoute);
   state.route=new Planner({map:state.map,autoFitView:true}); state.routeRecord=record;
@@ -197,6 +206,10 @@ async function startRoute(record,mode='walk'){
     const route=result.routes?.[0]||result.route; const distance=route?.distance, duration=route?.time;
     panel.querySelector('span').textContent=distance?`约 ${(distance/1000).toFixed(distance<1000?0:1)} km · 约 ${Math.max(1,Math.round((duration||0)/60))} 分钟`:'路线已规划';
   });
+}
+function openMapList(){
+  $('#mapListTitle').textContent=`当前结果 ${state.filtered.length} 家`; const list=$('#mapListContent'), empty=$('#mapListEmpty');
+  renderList('#mapListContent',state.filtered,id=>{closeDialog('mapListDialog');selectRestaurant(id);}); empty.classList.toggle('hidden',state.filtered.length>0); list.classList.toggle('hidden',!state.filtered.length); openDialog('mapListDialog');
 }
 async function locateUser(){
   $('#mapStatus').textContent='正在定位…';
@@ -234,6 +247,7 @@ function bindEvents(){
   $('#applyFiltersBtn').addEventListener('click',applyFilterDialog); $('#clearFiltersDialogBtn').addEventListener('click',clearFilters); $('#resetFiltersBtn').addEventListener('click',clearFilters);
   $('#sortSelect').addEventListener('change',e=>{ state.sort=e.target.value; sortRecords(); renderAll(); });
   $('#randomBtn').addEventListener('click',randomRestaurant); $('#locateBtn').addEventListener('click',locateUser); $('#fitMapBtn').addEventListener('click',fitMap);
+  $('#openMapListBtn').addEventListener('click',openMapList); $('#mapListResetBtn').addEventListener('click',()=>{clearFilters();openMapList();});
   $('#shareBtn').addEventListener('click',shareApp);
   $('#clearFavoritesBtn').addEventListener('click',()=>{ if(state.favorites.size && confirm('清空当前设备上的全部收藏？')){ state.favorites.clear(); saveFavorites(); renderAll(); }});
   $('#cancelMapChooserBtn').addEventListener('click',()=>closeDialog('mapChooserDialog'));
