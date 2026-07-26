@@ -189,9 +189,9 @@ async function loadAmap(){
     if(!window.AMapLoader){ await loadScript('https://webapi.amap.com/loader.js'); }
     const AMap=await window.AMapLoader.load({key:CONFIG.amapJsKey,version:'2.0',plugins:['AMap.Scale','AMap.ToolBar','AMap.Geolocation']});
     state.amap=AMap; state.map=new AMap.Map('map',{zoom:CONFIG.zoom||11,center:CONFIG.center||[114.305393,30.593099],viewMode:'2D',resizeEnable:true}); state.mapInitCount++;
-    state.markerIconsReady=await preloadMarkerIcons();
     state.map.addControl(new AMap.Scale()); state.map.addControl(new AMap.ToolBar({position:{top:'70px',right:'12px'}}));
     state.map.on('complete',()=>{ state.mapReady=true; $('#mapFallback').classList.add('hidden'); scheduleMarkerRender(); });
+    preloadMarkerIcons().then(ready=>{ state.markerIconsReady=ready; if(state.mapReady)scheduleMarkerRender(); });
     $('#mapStatus').textContent=geoCount?`已加载 ${geoCount} 个餐厅坐标`:'地图已启用，餐厅坐标仍待匹配'; setTimeout(()=>$('#mapStatus').textContent='',2500);
   }catch(e){ console.error(e); showMapFallback('地图加载失败','请检查高德 Key、安全密钥、域名白名单和网络。'); }
 }
