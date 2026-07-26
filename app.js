@@ -245,11 +245,8 @@ async function locateUser(){
   $('#mapStatus').textContent='正在定位…';
   try{
     let pos;
-    if(state.amap){
-      pos=await new Promise((resolve,reject)=>{ const geo=new state.amap.Geolocation({enableHighAccuracy:true,timeout:10000,needAddress:true}); geo.getCurrentPosition((status,result)=>status==='complete'?resolve({lng:result.position.lng,lat:result.position.lat,source:'amap'}):reject(result)); });
-    } else {
-      pos=await new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(p=>resolve({lng:p.coords.longitude,lat:p.coords.latitude,source:'browser'}),reject,{enableHighAccuracy:true,timeout:10000,maximumAge:60000}));
-    }
+    try { pos=await new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(p=>resolve({lng:p.coords.longitude,lat:p.coords.latitude,source:'browser'}),reject,{enableHighAccuracy:true,timeout:10000,maximumAge:60000})); }
+    catch(browserError){ if(!state.amap) throw browserError; pos=await new Promise((resolve,reject)=>{ const geo=new state.amap.Geolocation({enableHighAccuracy:true,timeout:10000,needAddress:true}); geo.getCurrentPosition((status,result)=>status==='complete'?resolve({lng:result.position.lng,lat:result.position.lat,source:'amap'}):reject(result)); }); }
     state.location=pos; sortRecords(); renderAll();
     if(state.map){ if(state.locationMarker) state.map.remove(state.locationMarker); const AMap=state.amap; state.locationMarker=new AMap.Marker({position:[pos.lng,pos.lat],content:'<div style="width:20px;height:20px;border:5px solid white;border-radius:50%;background:#1677ff;box-shadow:0 0 0 5px rgba(22,119,255,.22)"></div>',anchor:'center'}); state.map.add(state.locationMarker); state.map.setZoomAndCenter(14,[pos.lng,pos.lat]); }
     $('#mapStatus').textContent=pos.source==='amap'?'定位成功，已计算直线距离':'定位成功；地图未启用时距离可能有坐标偏差'; setTimeout(()=>$('#mapStatus').textContent='',3000); toast('定位成功');
