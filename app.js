@@ -5,7 +5,7 @@ const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
 
 const state = {
   records: [], filtered: [], favorites: new Set(JSON.parse(localStorage.getItem('wfm:favorites') || '[]')),
-  view: 'map', search: '', category: '', district: '', recommend: '', price: '', geoOnly: false,
+  view: 'map', search: '', category: '', district: '', recommend: '', price: '', geoOnly: false, districts:[], businessAreas:[], categories:[], businessStatuses:[],
   sort: 'recommend', location: null, amap: null, map: null, markers: [], markerById: new Map(), locationMarker: null,
   deferredInstallPrompt: null, selectedId: null, initialFitDone: false, mapReady:false, route:null, routeRecord:null,
   notes: JSON.parse(localStorage.getItem('foodmap.restaurantNotes.v1') || '{}'), scrolls: {map:0,list:0,favorites:0}
@@ -22,6 +22,7 @@ function escapeHtml(value='') { return String(value).replace(/[&<>'"]/g, c=>({'&
 function hasCoords(r){ return window.FoodMapCore.isReliableCoordinate(r); }
 function formatPrice(r){ return r.priceText ? `￥${r.priceText}` : (r.price ? `约￥${Math.round(r.price)}` : '价格未录入'); }
 function recClass(v){ return v==='必吃'?'must':''; }
+function businessLabel(r){ return r.business_status==='open'?'营业中':r.business_status==='temporarily_closed'?'暂停营业':'状态待核实'; }
 function iconFor(r){ return categoryEmoji[r.category] || '🍴'; }
 function saveFavorites(){ localStorage.setItem('wfm:favorites', JSON.stringify([...state.favorites])); updateSummary(); }
 function toast(message){ const el=$('#toast'); el.textContent=message; el.classList.add('show'); clearTimeout(toast.t); toast.t=setTimeout(()=>el.classList.remove('show'),2200); }
@@ -35,7 +36,7 @@ function formatDistance(m){ return window.FoodMapCore.formatDistance(m); }
 function filterRecords(){
   const q=state.search.trim().toLowerCase();
   const priceRange=state.price ? state.price.split('-').map(Number) : null;
-  state.filtered=state.records.filter(r=>window.FoodMapCore.matchesFilters(r,{search:q,category:state.category,district:state.district,recommend:state.recommend,price:state.price,geoOnly:state.geoOnly}));
+  state.filtered=state.records.filter(r=>window.FoodMapCore.matchesFilters(r,{search:q,category:state.category,district:state.district,recommend:state.recommend,price:state.price,geoOnly:state.geoOnly,districts:state.districts,businessAreas:state.businessAreas,categories:state.categories,businessStatuses:state.businessStatuses}));
   sortRecords(); renderAll();
 }
 function sortRecords(){
@@ -53,7 +54,7 @@ function cardHtml(r){
   const dist=distanceFor(r);
   return `<button class="restaurant-card" type="button" data-id="${r.id}">
     <span class="food-icon">${iconFor(r)}</span>
-    <span class="card-body"><span class="card-title-row"><strong>${escapeHtml(r.name)}</strong>${r.recommend?`<span class="tag ${recClass(r.recommend)}">${escapeHtml(r.recommend)}</span>`:''}</span>
+    <span class="card-body"><span class="card-title-row"><strong>${escapeHtml(r.name)}</strong><span class="tag ${r.business_status==='temporarily_closed'?'closed':''}">${businessLabel(r)}</span>${r.recommend?`<span class="tag ${recClass(r.recommend)}">${escapeHtml(r.recommend)}</span>`:''}</span>
     <p>${escapeHtml([r.district,r.address].filter(Boolean).join(' · ') || '地点待补充')}</p><p>${escapeHtml(r.feature || r.cuisine || r.category)}</p>${state.view==='favorites'&&noteFor(r.id)?`<p class="note-summary">备注：${escapeHtml(noteFor(r.id))}</p>`:''}</span>
     <span class="card-side"><strong>${formatPrice(r)}</strong><span>${dist==null?(hasCoords(r)?'可定位后排序':'待匹配坐标'):formatDistance(dist)}</span></span>
   </button>`;
@@ -74,7 +75,7 @@ function bindMapCard(button){ let start; button.addEventListener('pointerdown',e
 function updateSummary(){
   const favRows=state.filtered.filter(r=>state.favorites.has(r.id));
   $('#resultCount').textContent=`当前结果：${state.view==='favorites'?favRows.length:state.filtered.length} 家`;
-  const active=[state.category,state.district,state.recommend,state.price,state.geoOnly?'geo':''].filter(Boolean).length;
+  const active=[...state.districts,...state.businessAreas,...state.categories,...state.businessStatuses].length;
   $('#filterCount').textContent=active; $('#filterCount').classList.toggle('hidden',!active);
 }
 function renderAll(){
@@ -107,7 +108,7 @@ function openDetail(id){
   const r=state.records.find(x=>x.id===id); if(!r) return;
   state.selectedId=id; const dist=distanceFor(r), isFav=state.favorites.has(id);
   $('#detailContent').innerHTML=`<div class="detail-hero"><span class="food-icon">${iconFor(r)}</span><div><h2>${escapeHtml(r.name)}</h2><p>${escapeHtml([r.category,r.district,r.cuisine].filter(Boolean).join(' · '))}</p></div></div>
-    <div class="detail-tags">${r.recommend?`<span class="tag ${recClass(r.recommend)}">${escapeHtml(r.recommend)}</span>`:''}${r.environment?`<span class="tag">环境：${escapeHtml(r.environment)}</span>`:''}${r.party?`<span class="tag">${escapeHtml(r.party)} 人</span>`:''}${hasCoords(r)?'<span class="tag">地图坐标已匹配</span>':'<span class="tag">地图坐标待匹配</span>'}</div>
+    <div class="detail-tags"><span class="tag ${r.business_status==='temporarily_closed'?'closed':''}">${businessLabel(r)}</span>${r.recommend?`<span class="tag ${recClass(r.recommend)}">${escapeHtml(r.recommend)}</span>`:''}${r.environment?`<span class="tag">环境：${escapeHtml(r.environment)}</span>`:''}${r.party?`<span class="tag">${escapeHtml(r.party)} 人</span>`:''}${r.needs_location_review||r.map_display_mode==='review'?`<span class="tag">坐标待核实 · ${escapeHtml(r.point_precision||'')}</span>`:'<span class="tag">精确点位</span>'}</div>
     <div class="detail-grid"><div class="detail-cell"><span>人均</span><strong>${formatPrice(r)}</strong></div><div class="detail-cell"><span>离我距离</span><strong>${formatDistance(dist)}</strong></div><div class="detail-cell"><span>地址</span><strong>${escapeHtml(r.address||'待补充')}</strong></div><div class="detail-cell"><span>包间</span><strong>${escapeHtml(r.privateRoom||'未记录')}</strong></div></div>
     ${r.feature?`<section class="detail-section"><h3>特色菜</h3><p>${escapeHtml(r.feature)}</p></section>`:''}
     ${r.reason?`<section class="detail-section"><h3>推荐理由</h3><p>${escapeHtml(r.reason)}</p></section>`:''}
@@ -133,11 +134,13 @@ async function copyText(text){ try{ await navigator.clipboard.writeText(text); t
 
 function populateFilters(){
   const fill=(id,values)=>{ const el=$(id); values.filter(Boolean).sort((a,b)=>a.localeCompare(b,'zh-CN')).forEach(v=>el.insertAdjacentHTML('beforeend',`<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`)); };
-  fill('#categoryFilter',[...new Set(state.records.map(r=>r.category))]); fill('#districtFilter',[...new Set(state.records.map(r=>r.district))]); fill('#recommendFilter',[...new Set(state.records.map(r=>r.recommend))]);
+  fill('#districtFilter',[...new Set(state.records.map(r=>r.official_district))]); fill('#businessAreaFilter',[...new Set(state.records.flatMap(r=>r.business_area_tags_json||[]))]); fill('#categoryFilter',[...new Set(state.records.flatMap(r=>r.category_tags_json||[]))]);
+  const status=$('#businessStatusFilter'); [['open','营业中'],['temporarily_closed','暂停营业'],['unknown','状态待核实']].forEach(([value,label])=>status.insertAdjacentHTML('beforeend',`<option value="${value}">${label}</option>`));
 }
-function syncFilterDialog(){ $('#categoryFilter').value=state.category; $('#districtFilter').value=state.district; $('#recommendFilter').value=state.recommend; $('#priceFilter').value=state.price; $('#geoOnlyFilter').checked=state.geoOnly; }
-function applyFilterDialog(){ state.category=$('#categoryFilter').value; state.district=$('#districtFilter').value; state.recommend=$('#recommendFilter').value; state.price=$('#priceFilter').value; state.geoOnly=$('#geoOnlyFilter').checked; closeDialog('filterDialog'); filterRecords(); }
-function clearFilters(){ state.category=state.district=state.recommend=state.price=''; state.geoOnly=false; state.search=''; $('#searchInput').value=''; $('#clearSearchBtn').classList.add('hidden'); syncFilterDialog(); filterRecords(); }
+function selected(id){return [...$(id).selectedOptions].map(o=>o.value.includes('|')?o.value.split('|').pop():o.value)}
+function syncFilterDialog(){ for(const [id,values] of [['#districtFilter',state.districts],['#businessAreaFilter',state.businessAreas],['#categoryFilter',state.categories],['#businessStatusFilter',state.businessStatuses]]){[...$(id).options].forEach(o=>o.selected=values.includes(o.value.includes('|')?o.value.split('|').pop():o.value));} }
+function applyFilterDialog(){ state.districts=selected('#districtFilter'); state.businessAreas=selected('#businessAreaFilter'); state.categories=selected('#categoryFilter'); state.businessStatuses=selected('#businessStatusFilter'); closeDialog('filterDialog'); filterRecords(); }
+function clearFilters(){ state.category=state.district=state.recommend=state.price=''; state.districts=[];state.businessAreas=[];state.categories=[];state.businessStatuses=[]; state.geoOnly=false; state.search=''; $('#searchInput').value=''; $('#clearSearchBtn').classList.add('hidden'); syncFilterDialog(); filterRecords(); }
 
 function renderStats(){
   const average=state.records.filter(r=>r.price>0).reduce((s,r)=>s+r.price,0)/Math.max(1,state.records.filter(r=>r.price>0).length);
@@ -181,6 +184,8 @@ function renderMapMarkers(){
   const AMap=state.amap; const rows=state.filtered.map(r=>({record:r,position:normalizedPosition(r)})).filter(row=>row.position);
   state.markers=rows.map(({record,position})=>{
     const marker=new AMap.Marker({position,zIndex:120,extData:{id:record.id}});
+    if(record.business_status==='temporarily_closed'||record.map_display_mode==='temporarily_closed') marker.setLabel({content:'暂停营业',direction:'top'});
+    else if(record.map_display_mode==='review'||record.needs_location_review) marker.setLabel({content:'坐标待核实',direction:'top'});
     marker.on('click',()=>openDetail(record.id)); state.markerById.set(record.id,marker); return marker;
   });
   if(state.markers.length) state.map.add(state.markers);

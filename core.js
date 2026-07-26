@@ -5,7 +5,7 @@
   function isReliableCoordinate(record) {
     const status = record.geocode_status || record.geocodeStatus || '';
     const lng = record.longitude, lat = record.latitude;
-    return status === 'confirmed' && finite(lng) && finite(lat) &&
+    return (record.is_mappable === true || status === 'confirmed') && finite(lng) && finite(lat) &&
       Number(lng) >= WUHAN_BOUNDS.minLng && Number(lng) <= WUHAN_BOUNDS.maxLng &&
       Number(lat) >= WUHAN_BOUNDS.minLat && Number(lat) <= WUHAN_BOUNDS.maxLat;
   }
@@ -27,9 +27,14 @@
     const query = (filters.search || '').trim().toLowerCase();
     const text = [record.name, record.address, record.category, record.district, record.feature, record.reason, record.cuisine].join(' ').toLowerCase();
     const range = filters.price ? filters.price.split('-').map(Number) : null;
+    const any=(selected,values)=>!selected?.length||selected.some(x=>values.includes(x));
     return (!query || text.includes(query)) &&
       (!filters.category || record.category === filters.category) &&
       (!filters.district || record.district === filters.district) &&
+      any(filters.districts,[record.official_district||record.district]) &&
+      any(filters.businessAreas,record.business_area_tags_json||[]) &&
+      any(filters.categories,record.category_tags_json||[]) &&
+      any(filters.businessStatuses,[record.business_status||'unknown']) &&
       (!filters.recommend || record.recommend === filters.recommend) &&
       (!range || (Number(record.price) >= range[0] && Number(record.price) < range[1])) &&
       (!filters.geoOnly || isReliableCoordinate(record));

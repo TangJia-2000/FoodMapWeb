@@ -1,8 +1,5 @@
 {
-  "title": "武汉美食地图",
-  "city": "武汉",
-  "recordCount": 516,
-  "coordinateSystem": "GCJ-02",
-  "generatedAt": "2026-07-25",
-  "source": "武汉美食地图.xlsx"
+  "title": "美食地图",
+  "recordCount": 503,
+  "datasetVersion": "official-master-v1"
 }

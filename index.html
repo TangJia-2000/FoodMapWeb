@@ -56,6 +56,7 @@
           <button id="openMapListBtn" class="map-fab" type="button" aria-label="纵向查看店铺" title="查看全部店铺">☷</button>
         </div>
         <div id="mapStatus" class="map-status" aria-live="polite"></div>
+        <details class="map-legend"><summary>点位图例</summary><span>● 精确点位</span><span>？坐标待核实</span><span>Ⅱ 暂停营业</span></details>
         <section id="routePanel" class="route-panel hidden" aria-live="polite"></section>
         <div id="nearbyRail" class="nearby-rail" aria-label="附近餐厅"></div>
       </section>
@@ -113,10 +114,10 @@
     <button class="dialog-close" data-close-dialog="filterDialog" type="button" aria-label="关闭">×</button>
     <div class="dialog-heading"><p class="eyebrow">缩小范围</p><h2>筛选餐厅</h2></div>
     <div class="filter-grid">
-      <label>分类<select id="categoryFilter"><option value="">全部分类</option></select></label>
-      <label>地区<select id="districtFilter"><option value="">全部地区</option></select></label>
-      <label>推荐等级<select id="recommendFilter"><option value="">全部等级</option></select></label>
-      <label>人均价格<select id="priceFilter"><option value="">不限价格</option><option value="0-30">30 元以内</option><option value="30-80">30–80 元</option><option value="80-150">80–150 元</option><option value="150-99999">150 元以上</option></select></label>
+      <label>行政区 <b id="districtSelectedCount">0</b><select id="districtFilter" multiple></select></label>
+      <label>商圈/热门地点 <b id="businessAreaSelectedCount">0</b><select id="businessAreaFilter" multiple></select></label>
+      <label>分类 <b id="categorySelectedCount">0</b><select id="categoryFilter" multiple></select></label>
+      <label>营业状态 <b id="businessStatusSelectedCount">0</b><select id="businessStatusFilter" multiple></select></label>
     </div>
     <label class="switch-row"><input id="geoOnlyFilter" type="checkbox"><span>只显示已有地图坐标的餐厅</span></label>
     <div class="dialog-actions"><button id="clearFiltersDialogBtn" class="secondary-btn" type="button">清空</button><button id="applyFiltersBtn" class="primary-btn" type="button">查看结果</button></div>
