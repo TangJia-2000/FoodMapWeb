@@ -220,9 +220,10 @@ function clearRoute({restore=true}={}){ if(state.route){ state.route.clear?.(); 
 async function startRoute(record,mode='walk'){
   if(!state.map || !normalizedPosition(record)){ toast('该餐厅暂无可用坐标，请使用地图软件导航'); return; }
   closeDialog('detailDialog'); setView('map');
+  clearRoute({restore:false}); hideRestaurantLayers();
   if(!state.location){ await locateUser(); }
-  if(!state.location){ toast('定位失败，请使用地图软件导航'); return; }
-  clearRoute({restore:false}); hideRestaurantLayers(); const AMap=state.amap, target=normalizedPosition(record); const plugin=mode==='drive'?'AMap.Driving':mode==='ride'?'AMap.Riding':'AMap.Walking';
+  if(!state.location){ toast('定位失败，请使用地图软件导航'); showRestaurantLayers(); return; }
+  const AMap=state.amap, target=normalizedPosition(record); const plugin=mode==='drive'?'AMap.Driving':mode==='ride'?'AMap.Riding':'AMap.Walking';
   try { await new Promise((resolve,reject)=>AMap.plugin([plugin],()=>AMap[plugin.split('.').pop()]?resolve():reject(new Error('route plugin unavailable')))); } catch { toast('路线服务暂不可用，请使用地图软件导航'); showRestaurantLayers(); return; }
   const Planner=mode==='drive'?AMap.Driving:mode==='ride'?AMap.Riding:AMap.Walking;
   if(!Planner){ toast('路线服务暂不可用，请使用地图软件导航'); return; }
