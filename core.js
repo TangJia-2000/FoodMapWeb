@@ -28,6 +28,7 @@
     const text = [record.name, record.address, record.category, record.district, record.feature, record.reason, record.cuisine].join(' ').toLowerCase();
     const range = filters.price ? filters.price.split('-').map(Number) : null;
     const any=(selected,values)=>!selected?.length||selected.some(x=>values.includes(x));
+    const recommendation = filters.effectiveRecommendation ? filters.effectiveRecommendation(record) : (record.recommendation || record.recommend || '');
     return (!query || text.includes(query)) &&
       (!filters.category || record.category === filters.category) &&
       (!filters.district || record.district === filters.district) &&
@@ -35,7 +36,8 @@
       any(filters.businessAreas,record.business_area_tags_json||[]) &&
       any(filters.categories,record.category_tags_json||[]) &&
       any(filters.businessStatuses,[record.business_status||'unknown']) &&
-      (!filters.recommend || record.recommend === filters.recommend) &&
+      any(filters.recommendations,[recommendation]) &&
+      (!filters.recommend || recommendation === filters.recommend) &&
       (!range || (Number(record.price) >= range[0] && Number(record.price) < range[1])) &&
       (!filters.geoOnly || isReliableCoordinate(record));
   }

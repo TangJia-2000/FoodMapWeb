@@ -113,14 +113,22 @@
     <div class="sheet-handle"></div>
     <button class="dialog-close" data-close-dialog="filterDialog" type="button" aria-label="关闭">×</button>
     <div class="dialog-heading"><p class="eyebrow">缩小范围</p><h2>筛选餐厅</h2></div>
-    <div class="filter-grid">
-      <label>行政区 <b id="districtSelectedCount">0</b><select id="districtFilter" multiple></select></label>
-      <label>商圈/热门地点 <b id="businessAreaSelectedCount">0</b><select id="businessAreaFilter" multiple></select></label>
-      <label>分类 <b id="categorySelectedCount">0</b><select id="categoryFilter" multiple></select></label>
-      <label>营业状态 <b id="businessStatusSelectedCount">0</b><select id="businessStatusFilter" multiple></select></label>
+    <div class="filter-entry-list">
+      <button class="filter-entry" type="button" data-filter-group="districts"><span>行政区</span><small data-filter-summary="districts">未选择</small><b>›</b></button>
+      <button class="filter-entry" type="button" data-filter-group="businessAreas"><span>商圈/热门地点</span><small data-filter-summary="businessAreas">未选择</small><b>›</b></button>
+      <button class="filter-entry" type="button" data-filter-group="categories"><span>分类</span><small data-filter-summary="categories">未选择</small><b>›</b></button>
+      <button class="filter-entry" type="button" data-filter-group="recommendations"><span>推荐等级</span><small data-filter-summary="recommendations">未选择</small><b>›</b></button>
     </div>
-    <label class="switch-row"><input id="geoOnlyFilter" type="checkbox"><span>只显示已有地图坐标的餐厅</span></label>
     <div class="dialog-actions"><button id="clearFiltersDialogBtn" class="secondary-btn" type="button">清空</button><button id="applyFiltersBtn" class="primary-btn" type="button">查看结果</button></div>
+  </dialog>
+
+  <dialog id="optionPickerDialog" class="sheet-dialog option-picker-dialog" aria-labelledby="optionPickerTitle">
+    <div class="sheet-handle"></div><button id="cancelOptionPickerBtn" class="dialog-close" type="button" aria-label="关闭">×</button>
+    <div class="dialog-heading"><p class="eyebrow">多选筛选</p><h2 id="optionPickerTitle">筛选</h2></div>
+    <input id="optionPickerSearch" class="option-picker-search" type="search" placeholder="搜索选项" autocomplete="off">
+    <div id="optionPickerOptions" class="option-picker-options"></div>
+    <div class="picker-tools"><button id="selectAllPickerBtn" class="secondary-btn" type="button">全选</button><button id="clearPickerBtn" class="secondary-btn" type="button">清空</button></div>
+    <div class="dialog-actions"><button id="cancelPickerBtn" class="secondary-btn" type="button">取消</button><button id="confirmPickerBtn" class="primary-btn" type="button">确定</button></div>
   </dialog>
 
   <dialog id="mapChooserDialog" class="sheet-dialog map-chooser-dialog">
@@ -135,6 +143,11 @@
     <div class="dialog-heading"><p class="eyebrow">地图结果</p><h2 id="mapListTitle">当前结果 0 家</h2></div>
     <div id="mapListContent" class="restaurant-list"></div>
     <div id="mapListEmpty" class="empty-state hidden"><div>🍽️</div><strong>没有匹配的餐厅</strong><button id="mapListResetBtn" type="button">清空筛选</button></div>
+  </dialog>
+
+  <dialog id="pointGroupDialog" class="sheet-dialog map-list-dialog">
+    <div class="sheet-handle"></div><button class="dialog-close" data-close-dialog="pointGroupDialog" type="button" aria-label="关闭">×</button>
+    <div class="dialog-heading"><p class="eyebrow">同一地图点位</p><h2 id="pointGroupTitle">餐厅</h2></div><div id="pointGroupList" class="restaurant-list"></div>
   </dialog>
 
   <dialog id="installDialog" class="sheet-dialog setup-dialog">
