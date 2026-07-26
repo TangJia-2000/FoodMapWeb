@@ -56,6 +56,10 @@
           <button id="openMapListBtn" class="map-fab" type="button" aria-label="纵向查看店铺" title="查看全部店铺">☷</button>
         </div>
         <div id="mapStatus" class="map-status" aria-live="polite"></div>
+        <form id="placeSearchForm" class="place-search" role="search" aria-label="全国地点搜索">
+          <input id="placeSearchInput" type="search" minlength="2" autocomplete="off" placeholder="搜索全国地点">
+          <button id="placeSearchBtn" type="submit">搜索</button>
+        </form>
         <details class="map-legend"><summary>点位图例</summary><span>● 餐厅点位</span><span>Ⅱ 暂停营业</span></details>
         <section id="routePanel" class="route-panel hidden" aria-live="polite"></section>
         <div id="nearbyRail" class="nearby-rail" aria-label="附近餐厅"></div>
@@ -148,6 +152,14 @@
   <dialog id="pointGroupDialog" class="sheet-dialog map-list-dialog">
     <div class="sheet-handle"></div><button class="dialog-close" data-close-dialog="pointGroupDialog" type="button" aria-label="关闭">×</button>
     <div class="dialog-heading"><p class="eyebrow">同一地图点位</p><h2 id="pointGroupTitle">餐厅</h2></div><div id="pointGroupList" class="restaurant-list"></div>
+  </dialog>
+
+  <dialog id="placeSearchDialog" class="sheet-dialog map-list-dialog" aria-labelledby="placeSearchTitle">
+    <div class="sheet-handle"></div><button class="dialog-close" data-close-dialog="placeSearchDialog" type="button" aria-label="关闭">×</button>
+    <div class="dialog-heading"><p class="eyebrow">全国地点搜索</p><h2 id="placeSearchTitle">搜索结果</h2></div>
+    <div id="placeSearchResults" class="place-search-results"></div>
+    <div id="placeSearchEmpty" class="empty-state hidden"><div>⌕</div><strong>没有找到地点</strong><p>请换一个更具体的关键词后重新搜索。</p></div>
+    <button id="clearPlaceSearchBtn" class="secondary-btn map-cancel hidden" type="button">清除地点搜索</button>
   </dialog>
 
   <dialog id="installDialog" class="sheet-dialog setup-dialog">

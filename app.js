@@ -10,7 +10,8 @@ const state = {
   deferredInstallPrompt: null, selectedId: null, initialFitDone: false, mapReady:false, route:null, routeRecord:null, markerRenderId: 0,
   notes: JSON.parse(localStorage.getItem('foodmap.restaurantNotes.v1') || '{}'), recommendationOverrides: JSON.parse(localStorage.getItem('foodmap.recommendationOverrides.v1') || '{}'), scrolls: {map:0,list:0,favorites:0},
   coordinateGroups: new Map(), visiblePointMarkers: new Map(), layersHidden: false, mapInitCount: 0, pointLayerUpdates: 0, pointLayerRebuilds: 0, pickerGroup: null, pickerValues: [],
-  markerColorOverrides: JSON.parse(localStorage.getItem('foodmap.markerColorOverrides.v1') || '{}'), markerIconsReady: false
+  markerColorOverrides: JSON.parse(localStorage.getItem('foodmap.markerColorOverrides.v1') || '{}'), markerIconsReady: false,
+  placeSearch: null, placeSearchPromise: null, placeSearchCache: new Map(), placeSearchResults: [], selectedTemporaryPlace: null, temporaryPlaceMarker: null, placeSearchInFlight: false
 };
 
 const categoryEmoji = {
@@ -207,9 +208,60 @@ async function loadRestaurantData(){
 }
 function showMapFallback(title,text){ $('#mapFallbackTitle').textContent=title; $('#mapFallbackText').textContent=text; $('#mapFallback').classList.remove('hidden'); }
 function normalizedPosition(record){
-  if(!hasCoords(record)) return null;
+  const temporary=record?.isTemporaryPlace===true;
+  if(!temporary&&!hasCoords(record)) return null;
   const lng=Number(record.longitude),lat=Number(record.latitude);
-  return Number.isFinite(lng)&&Number.isFinite(lat)&&lng!==0&&lat!==0?[lng,lat]:null;
+  return Number.isFinite(lng)&&Number.isFinite(lat)&&lng!==0&&lat!==0&&Math.abs(lng)<=180&&Math.abs(lat)<=90?[lng,lat]:null;
+}
+async function loadPlaceSearch(){
+  if(state.placeSearch)return state.placeSearch;
+  if(state.placeSearchPromise)return state.placeSearchPromise;
+  if(!state.amap||!state.map)throw new Error('map unavailable');
+  state.placeSearchPromise=new Promise((resolve,reject)=>state.amap.plugin(['AMap.PlaceSearch'],()=>{
+    try{ state.placeSearch=new state.amap.PlaceSearch({city:'全国',citylimit:false,pageSize:10,pageIndex:1}); resolve(state.placeSearch); }
+    catch(error){ reject(error); }
+  })).catch(error=>{state.placeSearchPromise=null;throw error;});
+  return state.placeSearchPromise;
+}
+function normalizePlace(poi){
+  const location=poi?.location||{}; const longitude=Number(location.lng??location.getLng?.()),latitude=Number(location.lat??location.getLat?.());
+  if(!Number.isFinite(longitude)||!Number.isFinite(latitude))return null;
+  return {isTemporaryPlace:true,id:`place:${poi.id||`${longitude},${latitude}`}`,name:String(poi.name||'未命名地点'),address:[poi.pname,poi.cityname,poi.adname,poi.address].filter(Boolean).join(' '),city:String(poi.cityname||poi.pname||''),district:String(poi.adname||''),longitude,latitude,poiId:poi.id||''};
+}
+function renderPlaceSearchResults(){
+  const rows=state.placeSearchResults; $('#placeSearchTitle').textContent=`搜索结果 ${rows.length} 条`;
+  $('#placeSearchResults').innerHTML=rows.map((place,index)=>`<button class="place-search-result" type="button" data-place-index="${index}"><strong>${escapeHtml(place.name)}</strong><span>${escapeHtml([place.city,place.district].filter(Boolean).join(' · ')||'全国地点')}</span><span>${escapeHtml(place.address||'地址未提供')}</span></button>`).join('');
+  $('#placeSearchEmpty').classList.toggle('hidden',rows.length>0); $('#clearPlaceSearchBtn').classList.toggle('hidden',!rows.length&&!state.selectedTemporaryPlace);
+  $$('.place-search-result').forEach(button=>button.addEventListener('click',()=>openTemporaryPlace(rows[Number(button.dataset.placeIndex)])));
+  openDialog('placeSearchDialog');
+}
+function renderTemporaryPlacePanel(place){
+  const panel=$('#routePanel'); panel.classList.remove('hidden'); panel.innerHTML=`<div><strong>${escapeHtml(place.name)}</strong><span>${escapeHtml(place.address||[place.city,place.district].filter(Boolean).join(' · ')||'临时搜索地点')}</span></div><div class="route-actions"><button id="temporaryRouteBtn">站内导航</button><button id="temporaryMapBtn">打开地图软件</button><button id="clearTemporaryPlaceBtn">清除地点</button></div>`;
+  $('#temporaryRouteBtn').addEventListener('click',()=>startRoute(place)); $('#temporaryMapBtn').addEventListener('click',()=>openMapChooser(place)); $('#clearTemporaryPlaceBtn').addEventListener('click',clearTemporaryPlace);
+}
+function openTemporaryPlace(place){
+  if(!place||!state.map||!state.amap)return;
+  state.selectedTemporaryPlace=place; const position=normalizedPosition(place); if(!position)return;
+  if(!state.temporaryPlaceMarker){ state.temporaryPlaceMarker=new state.amap.Marker({position,content:'<i class="temporary-place-marker" aria-hidden="true"></i>',offset:new state.amap.Pixel(-15,-30),anchor:'bottom-center',zIndex:320,title:place.name}); state.temporaryPlaceMarker.on('click',()=>renderTemporaryPlacePanel(state.selectedTemporaryPlace)); state.map.add(state.temporaryPlaceMarker); }
+  else { state.temporaryPlaceMarker.setPosition(position); state.temporaryPlaceMarker.show(); }
+  state.map.setZoomAndCenter(15,position); closeDialog('placeSearchDialog'); renderTemporaryPlacePanel(place);
+}
+function clearTemporaryPlace(){
+  if(state.route)clearRoute();
+  if(state.temporaryPlaceMarker){state.map?.remove(state.temporaryPlaceMarker);state.temporaryPlaceMarker=null;}
+  state.selectedTemporaryPlace=null; state.placeSearchResults=[]; $('#routePanel').classList.add('hidden'); $('#routePanel').innerHTML=''; closeDialog('placeSearchDialog'); $('#placeSearchInput').value='';
+}
+async function submitPlaceSearch(){
+  const input=$('#placeSearchInput'),query=input.value.trim(),button=$('#placeSearchBtn');
+  if(query.length<2){toast('请输入至少 2 个字符再搜索地点');input.focus();return;}
+  if(state.placeSearchInFlight)return;
+  state.placeSearchInFlight=true; button.disabled=true; button.textContent='搜索中';
+  try{
+    let rows=state.placeSearchCache.get(query);
+    if(!rows){const search=await loadPlaceSearch(); rows=await new Promise((resolve,reject)=>search.search(query,(status,result)=>{if(status==='complete')resolve((result?.poiList?.pois||[]).map(normalizePlace).filter(Boolean).slice(0,10));else reject(new Error(status||'search failed'));})); state.placeSearchCache.set(query,rows);}
+    state.placeSearchResults=rows; renderPlaceSearchResults(); if(!rows.length)toast('没有找到匹配地点');
+  }catch(error){console.warn('PlaceSearch failed',error);toast('地点搜索暂时不可用，请稍后重试');}
+  finally{state.placeSearchInFlight=false;button.disabled=false;button.textContent='搜索';}
 }
 function buildCoordinateGroups(){ state.coordinateGroups.clear(); state.records.filter(hasCoords).forEach(record=>{ const position=normalizedPosition(record), key=position.map(v=>v.toFixed(6)).join(','); const group=state.coordinateGroups.get(key)||{key,position,records:[]}; group.records.push(record); state.coordinateGroups.set(key,group); }); }
 function pointSignature(group){ return group.records.map(r=>r.id).sort().join('|'); }
@@ -225,7 +277,7 @@ function showRestaurantLayers(){ state.layersHidden=false; scheduleMarkerRender(
 function selectMarker(id){ const record=state.records.find(r=>r.id===id); if(!record||!state.map||!hasCoords(record)||state.layersHidden)return; const position=normalizedPosition(record),color=markerColorFor(record); if(!state.highlightMarker){state.highlightMarker=new state.amap.Marker({position,icon:markerIcon(color),offset:new state.amap.Pixel(-16,-40),anchor:'bottom-center',zIndex:300});state.map.add(state.highlightMarker);}else{state.highlightMarker.setPosition(position);state.highlightMarker.setIcon(markerIcon(color));state.highlightMarker.show();} state.highlightMarker.setAnimation?.('AMAP_ANIMATION_BOUNCE');setTimeout(()=>state.highlightMarker?.setAnimation?.('AMAP_ANIMATION_NONE'),900); }
 function openCoordinateGroup(group){ $('#pointGroupTitle').textContent=`同一位置的 ${group.records.length} 家店`; renderList('#pointGroupList',group.records,id=>{closeDialog('pointGroupDialog');openDetail(id);}); openDialog('pointGroupDialog'); }
 function fitMap(){ if(!state.map){ toast('地图尚未启用'); return; } const markers=[...state.visiblePointMarkers.values()].map(item=>item.marker); if(markers.length) state.map.setFitView(markers,false,[60,45,150,45],12); else state.map.setZoomAndCenter(CONFIG.zoom||11,CONFIG.center); }
-function clearRoute({restore=true}={}){ if(state.route){ state.route.clear?.(); state.route=null; } state.routeRecord=null; $('#routePanel').classList.add('hidden'); $('#routePanel').innerHTML=''; if(restore)showRestaurantLayers(); }
+function clearRoute({restore=true}={}){ if(state.route){ state.route.clear?.(); state.route=null; } state.routeRecord=null; $('#routePanel').classList.add('hidden'); $('#routePanel').innerHTML=''; if(restore){showRestaurantLayers();if(state.selectedTemporaryPlace)renderTemporaryPlacePanel(state.selectedTemporaryPlace);} }
 async function startRoute(record,mode='walk'){
   if(!state.map || !normalizedPosition(record)){ toast('该餐厅暂无可用坐标，请使用地图软件导航'); return; }
   closeDialog('detailDialog'); setView('map');
@@ -283,6 +335,8 @@ function bindEvents(){
   $('#applyFiltersBtn').addEventListener('click',applyFilterDialog); $('#clearFiltersDialogBtn').addEventListener('click',clearFilters); $('#resetFiltersBtn').addEventListener('click',clearFilters);
   $('#sortSelect').addEventListener('change',e=>{ state.sort=e.target.value; sortRecords(); renderAll(); });
   $('#randomBtn').addEventListener('click',randomRestaurant); $('#locateBtn').addEventListener('click',locateUser); $('#fitMapBtn').addEventListener('click',fitMap);
+  $('#placeSearchForm').addEventListener('submit',event=>{event.preventDefault();submitPlaceSearch();});
+  $('#clearPlaceSearchBtn').addEventListener('click',clearTemporaryPlace);
   $('#openMapListBtn').addEventListener('click',openMapList); $('#mapListResetBtn').addEventListener('click',()=>{clearFilters();openMapList();});
   $('#shareBtn').addEventListener('click',shareApp);
   $('#clearFavoritesBtn').addEventListener('click',()=>{ if(state.favorites.size && confirm('清空当前设备上的全部收藏？')){ state.favorites.clear(); saveFavorites(); renderAll(); }});

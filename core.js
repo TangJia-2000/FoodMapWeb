@@ -46,7 +46,10 @@
     const name = encodeURIComponent(record.name || '');
     const query = encodeURIComponent(record.query || `${config.cityName || '武汉'} ${record.name || ''} ${record.address || ''}`.trim());
     const src = encodeURIComponent(config.uriSource || 'wuhan-food-map');
-    if (isReliableCoordinate(record)) {
+    const hasNavigationCoordinates = record.isTemporaryPlace === true
+      ? finite(record.longitude) && finite(record.latitude) && Math.abs(Number(record.longitude)) <= 180 && Math.abs(Number(record.latitude)) <= 90
+      : isReliableCoordinate(record);
+    if (hasNavigationCoordinates) {
       const lng = Number(record.longitude).toFixed(6), lat = Number(record.latitude).toFixed(6);
       return {
         amap: `https://uri.amap.com/navigation?to=${lng},${lat},${name}&mode=${encodeURIComponent(config.defaultTravelMode || 'walk')}&src=${src}&coordinate=gaode&callnative=1`,
