@@ -7,7 +7,7 @@ const state = {
   records: [], filtered: [], favorites: new Set(JSON.parse(localStorage.getItem('wfm:favorites') || '[]')),
   view: 'map', search: '', category: '', district: '', recommend: '', price: '', geoOnly: false,
   sort: 'recommend', location: null, amap: null, map: null, markers: [], markerCluster: null, locationMarker: null,
-  deferredInstallPrompt: null, selectedId: null, initialFitDone: false
+  deferredInstallPrompt: null, selectedId: null, initialFitDone: false, scrolls: {map:0,list:0,favorites:0}
 };
 
 const categoryEmoji = {
@@ -67,9 +67,8 @@ function renderNearby(){
   $$('.nearby-card').forEach(btn=>btn.addEventListener('click',()=>openDetail(Number(btn.dataset.id))));
 }
 function updateSummary(){
-  $('#resultCount').textContent=state.filtered.length;
-  $('#geoCount').textContent=state.records.filter(hasCoords).length;
-  $('#favCount').textContent=state.favorites.size;
+  const favRows=state.filtered.filter(r=>state.favorites.has(r.id));
+  $('#resultCount').textContent=`当前结果：${state.view==='favorites'?favRows.length:state.filtered.length} 家`;
   const active=[state.category,state.district,state.recommend,state.price,state.geoOnly?'geo':''].filter(Boolean).length;
   $('#filterCount').textContent=active; $('#filterCount').classList.toggle('hidden',!active);
 }
@@ -79,36 +78,45 @@ function renderAll(){
   $('#restaurantList').classList.toggle('hidden',state.filtered.length===0);
   $('#resultHint').textContent=`显示 ${state.filtered.length} / ${state.records.length} 家${state.location?' · 已按当前位置计算距离':''}`;
   const favRows=state.records.filter(r=>state.favorites.has(r.id));
-  renderList('#favoritesList',favRows); $('#favoritesList').classList.toggle('hidden',!favRows.length); $('#favoritesEmpty').classList.toggle('hidden',favRows.length>0);
+  const filteredFavRows=state.filtered.filter(r=>state.favorites.has(r.id));
+  renderList('#favoritesList',filteredFavRows); $('#favoritesList').classList.toggle('hidden',!filteredFavRows.length); $('#favoritesEmpty').classList.toggle('hidden',filteredFavRows.length>0);
+  if(!filteredFavRows.length) $('#favoritesEmpty').querySelector('p').textContent=state.favorites.size?'当前搜索或筛选条件下没有收藏餐厅。':'打开餐厅详情，点一下“收藏”即可。';
   renderNearby(); renderMapMarkers();
 }
 
 function setView(view){
+  const previous=state.view; state.scrolls[previous]=document.scrollingElement.scrollTop;
   state.view=view;
   ['map','list','favorites','stats'].forEach(v=>{
     $(`#${v}View`)?.classList.toggle('active',v===view);
     $(`.nav-btn[data-view="${v}"]`)?.classList.toggle('active',v===view);
   });
-  if(view==='map' && state.map) setTimeout(()=>state.map.resize(),50);
+  updateSummary();
+  requestAnimationFrame(()=>{ document.scrollingElement.scrollTop=state.scrolls[view]||0; if(view==='map' && state.map){ state.map.resize(); renderMapMarkers(); } });
   if(view==='stats') renderStats();
 }
 
 function detailNavigationLinks(r){ return window.FoodMapCore.navigationLinks(r,CONFIG); }
 function openDetail(id){
   const r=state.records.find(x=>x.id===id); if(!r) return;
-  state.selectedId=id; const dist=distanceFor(r), links=detailNavigationLinks(r), isFav=state.favorites.has(id);
-  const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent);
+  state.selectedId=id; const dist=distanceFor(r), isFav=state.favorites.has(id);
   $('#detailContent').innerHTML=`<div class="detail-hero"><span class="food-icon">${iconFor(r)}</span><div><h2>${escapeHtml(r.name)}</h2><p>${escapeHtml([r.category,r.district,r.cuisine].filter(Boolean).join(' · '))}</p></div></div>
     <div class="detail-tags">${r.recommend?`<span class="tag ${recClass(r.recommend)}">${escapeHtml(r.recommend)}</span>`:''}${r.environment?`<span class="tag">环境：${escapeHtml(r.environment)}</span>`:''}${r.party?`<span class="tag">${escapeHtml(r.party)} 人</span>`:''}${hasCoords(r)?'<span class="tag">地图坐标已匹配</span>':'<span class="tag">地图坐标待匹配</span>'}</div>
     <div class="detail-grid"><div class="detail-cell"><span>人均</span><strong>${formatPrice(r)}</strong></div><div class="detail-cell"><span>离我距离</span><strong>${formatDistance(dist)}</strong></div><div class="detail-cell"><span>地址</span><strong>${escapeHtml(r.address||'待补充')}</strong></div><div class="detail-cell"><span>包间</span><strong>${escapeHtml(r.privateRoom||'未记录')}</strong></div></div>
     ${r.feature?`<section class="detail-section"><h3>特色菜</h3><p>${escapeHtml(r.feature)}</p></section>`:''}
     ${r.reason?`<section class="detail-section"><h3>推荐理由</h3><p>${escapeHtml(r.reason)}</p></section>`:''}
-    <div class="detail-actions"><button id="favoriteDetailBtn" type="button">${isFav?'★ 已收藏':'☆ 收藏'}</button><button id="copyAddressBtn" type="button">复制地址</button><a class="wide" href="${links.amap}" target="_blank" rel="noopener">用高德地图去这里</a><a href="${links.baidu}" target="_blank" rel="noopener">百度地图</a><a href="${links.tencent}" target="_blank" rel="noopener">腾讯地图</a>${isIOS?`<a href="${links.apple}" target="_blank" rel="noopener">苹果地图</a>`:''}</div>`;
+    <div class="detail-actions"><button id="favoriteDetailBtn" type="button">${isFav?'★ 已收藏':'☆ 收藏'}</button><button id="copyAddressBtn" type="button">复制地址</button><button id="openMapChooserBtn" class="wide" type="button">打开地图软件去这里</button></div>`;
   $('#favoriteDetailBtn').addEventListener('click',()=>{ toggleFavorite(id); openDetail(id); });
   $('#copyAddressBtn').addEventListener('click',()=>copyText([r.name,r.address].filter(Boolean).join('，')));
+  $('#openMapChooserBtn').addEventListener('click',()=>openMapChooser(r));
   openDialog('detailDialog');
   if(state.map && hasCoords(r)){ state.map.setZoomAndCenter(16,[Number(r.longitude),Number(r.latitude)],false,400); }
   const shareUrl=new URL(location.href); shareUrl.searchParams.set('place',String(id)); history.replaceState(null,'',shareUrl);
+}
+function openMapChooser(record){
+  const links=detailNavigationLinks(record,CONFIG), options=[['高德地图',links.amap],['百度地图',links.baidu],['腾讯地图',links.tencent]];
+  $('#mapChooserOptions').innerHTML=options.map(([name,href])=>`<a href="${href}" target="_blank" rel="noopener">${name}</a>`).join('');
+  openDialog('mapChooserDialog');
 }
 function toggleFavorite(id){ state.favorites.has(id)?state.favorites.delete(id):state.favorites.add(id); saveFavorites(); renderAll(); toast(state.favorites.has(id)?'已收藏':'已取消收藏'); }
 async function copyText(text){ try{ await navigator.clipboard.writeText(text); toast('已复制'); }catch{ window.prompt('长按复制：',text); } }
@@ -161,10 +169,11 @@ function renderMapMarkers(){
     const dot=document.createElement('button'); dot.type='button'; dot.className='custom-map-marker'; dot.textContent=iconFor(r); dot.title=r.name;
     Object.assign(dot.style,{width:'34px',height:'34px',border:'2px solid white',borderRadius:'13px',background:r.recommend==='必吃'?'#f36f3d':'#2d7d66',color:'white',boxShadow:'0 5px 12px rgba(30,45,35,.28)',fontSize:'16px',display:'grid',placeItems:'center'});
     dot.addEventListener('click',()=>openDetail(r.id));
-    return new AMap.Marker({position:[Number(r.longitude),Number(r.latitude)],content:dot,anchor:'bottom-center',extData:{id:r.id}});
+    return new AMap.Marker({position:[Number(r.longitude),Number(r.latitude)],content:dot,offset:new AMap.Pixel(-17,-34),zIndex:220,anchor:'bottom-center',extData:{id:r.id}});
   });
   if(state.markers.length){
-    state.markerCluster=new AMap.MarkerCluster(state.map,state.markers,{gridSize:72,maxZoom:16,averageCenter:true});
+    try { state.markerCluster=new AMap.MarkerCluster(state.map,state.markers,{gridSize:72,maxZoom:16,averageCenter:true,zIndex:210}); }
+    catch { state.map.add(state.markers); $('#mapStatus').textContent=`已显示 ${state.markers.length} 个餐厅坐标`; }
   }
   if(state.markers.length && !state.initialFitDone){ state.map.setFitView(state.markers,false,[60,45,150,45],12); state.initialFitDone=true; }
 }
@@ -186,7 +195,7 @@ async function locateUser(){
 
 function randomRestaurant(){ const pool=state.filtered.length?state.filtered:state.records; if(!pool.length)return; const r=pool[Math.floor(Math.random()*pool.length)]; openDetail(r.id); }
 function shareApp(){
-  const data={title:CONFIG.appName||'武汉美食地图',text:'一起看看朋友推荐的武汉美食地图',url:location.href};
+  const data={title:CONFIG.appName||'美食地图',text:'一起看看朋友推荐的美食地图',url:location.href};
   if(navigator.share) navigator.share(data).catch(()=>{}); else copyText(location.href);
 }
 function installHelp(){
@@ -194,7 +203,7 @@ function installHelp(){
   let html;
   if(isWechat) html='<p><strong>微信里需要先打开系统浏览器：</strong></p><p>点右上角“…” → 选择“在浏览器打开”。</p><p>然后按照浏览器菜单中的“添加到主屏幕”或“安装应用”操作。</p>';
   else if(isIOS) html='<p><strong>iPhone / iPad：</strong></p><p>请使用 Safari，点底部“分享”按钮 → “添加到主屏幕”。</p>';
-  else html='<p><strong>安卓：</strong></p><p>使用 Chrome 或系统浏览器，打开浏览器菜单 → “安装应用”或“添加到主屏幕”。</p>';
+  else html='<p><strong>安卓浏览器：</strong></p><p>打开浏览器菜单，选择“添加到桌面 / 添加到主屏幕 / 安装应用 / 添加快捷方式”。</p>';
   $('#installInstructions').innerHTML=html; openDialog('installDialog');
 }
 
@@ -207,6 +216,7 @@ function bindEvents(){
   $('#randomBtn').addEventListener('click',randomRestaurant); $('#locateBtn').addEventListener('click',locateUser); $('#fitMapBtn').addEventListener('click',fitMap);
   $('#shareBtn').addEventListener('click',shareApp); $('#openSetupBtn').addEventListener('click',()=>openDialog('setupDialog'));
   $('#clearFavoritesBtn').addEventListener('click',()=>{ if(state.favorites.size && confirm('清空当前设备上的全部收藏？')){ state.favorites.clear(); saveFavorites(); renderAll(); }});
+  $('#cancelMapChooserBtn').addEventListener('click',()=>closeDialog('mapChooserDialog'));
   $$('.nav-btn').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view)));
   $$('[data-close-dialog]').forEach(b=>b.addEventListener('click',()=>closeDialog(b.dataset.closeDialog)));
   $$('.sheet-dialog').forEach(d=>d.addEventListener('click',e=>{ if(e.target===d) d.close(); }));
@@ -232,6 +242,7 @@ async function init(){
   const swAllowed=location.protocol==='https:' || ['localhost','127.0.0.1'].includes(location.hostname);
   if('serviceWorker' in navigator && swAllowed) navigator.serviceWorker.register('./service-worker.js').catch(console.error);
   const isStandalone=window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
-  if(!isStandalone && (/iPad|iPhone|iPod|Android/.test(navigator.userAgent))) $('#installBtn').classList.remove('hidden');
+  if(isStandalone) $('#installBtn').classList.add('hidden');
+  else if(/MicroMessenger|iPad|iPhone|iPod/i.test(navigator.userAgent)) $('#installBtn').classList.remove('hidden');
 }
 init();

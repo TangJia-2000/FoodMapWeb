@@ -1,6 +1,6 @@
 // 本文件可直接修改。不要把高德 Web 服务 Key 写在这里；Web 服务 Key 仅用于本地坐标匹配脚本。
 window.APP_CONFIG = Object.assign({
-  appName: "武汉美食地图",
+  appName: "美食地图",
   cityName: "武汉",
   cityAdcode: "420100",
   center: [114.305393, 30.593099],

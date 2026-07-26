@@ -4,22 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f36f3d">
-  <meta name="description" content="朋友共同整理的武汉美食地图：地图、筛选、距离、收藏与导航。">
+  <meta name="description" content="朋友共同整理的美食地图：地图、筛选、距离、收藏与导航。">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="武汉美食地图">
+  <meta name="apple-mobile-web-app-title" content="美食地图">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
   <link rel="icon" href="./assets/icons/icon-192.png">
   <link rel="stylesheet" href="./styles.css">
-  <title>武汉美食地图</title>
+  <title>美食地图</title>
 </head>
 <body>
   <div id="app" class="app-shell">
     <header class="topbar">
       <div>
-        <p class="eyebrow">朋友推荐数据库</p>
-        <h1>武汉美食地图</h1>
+        <p class="eyebrow">朋友推荐攻略</p>
+        <h1>美食地图</h1>
       </div>
       <div class="top-actions">
         <button id="installBtn" class="icon-btn hidden" type="button" aria-label="安装到手机桌面" title="安装到手机桌面">＋</button>
@@ -33,19 +33,13 @@
         <input id="searchInput" type="search" placeholder="搜索店名、地址、特色菜…" autocomplete="off">
         <button id="clearSearchBtn" class="clear-btn hidden" type="button" aria-label="清空搜索">×</button>
       </label>
-      <button id="filterBtn" class="filter-btn" type="button">筛选 <span id="filterCount" class="count-badge hidden">0</span></button>
+      <button id="filterBtn" class="filter-btn" type="button">筛选 <span id="filterCount" class="count-badge hidden">0</span></button><button id="randomBtn" class="random-btn" type="button">随机一家</button>
     </section>
-
-    <section class="summary-strip" aria-label="数据概览">
-      <div><strong id="resultCount">0</strong><span>当前结果</span></div>
-      <div><strong id="geoCount">0</strong><span>已有坐标</span></div>
-      <div><strong id="favCount">0</strong><span>我的收藏</span></div>
-      <button id="randomBtn" type="button"><strong>🎲</strong><span>随机一家</span></button>
-    </section>
+    <p id="resultCount" class="result-count" aria-live="polite">当前结果：0 家</p>
 
     <main class="content-shell">
       <section id="mapView" class="view-pane map-pane active" aria-label="地图视图">
-        <div id="map" class="map-canvas" role="application" aria-label="武汉美食地图"></div>
+        <div id="map" class="map-canvas" role="application" aria-label="美食地图"></div>
         <div id="mapFallback" class="map-fallback">
           <div class="map-fallback-art" aria-hidden="true">
             <span class="river river-a"></span><span class="river river-b"></span>
@@ -125,6 +119,13 @@
     </div>
     <label class="switch-row"><input id="geoOnlyFilter" type="checkbox"><span>只显示已有地图坐标的餐厅</span></label>
     <div class="dialog-actions"><button id="clearFiltersDialogBtn" class="secondary-btn" type="button">清空</button><button id="applyFiltersBtn" class="primary-btn" type="button">查看结果</button></div>
+  </dialog>
+
+  <dialog id="mapChooserDialog" class="sheet-dialog map-chooser-dialog">
+    <div class="sheet-handle"></div><button class="dialog-close" data-close-dialog="mapChooserDialog" type="button" aria-label="关闭">×</button>
+    <div class="dialog-heading"><p class="eyebrow">地图导航</p><h2>打开地图软件去这里</h2></div>
+    <div id="mapChooserOptions" class="map-chooser-options"></div>
+    <button id="cancelMapChooserBtn" class="secondary-btn map-cancel" type="button">取消</button>
   </dialog>
 
   <dialog id="setupDialog" class="sheet-dialog setup-dialog">

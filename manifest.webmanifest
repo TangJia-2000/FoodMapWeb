@@ -1,7 +1,7 @@
 {
-  "name": "武汉美食地图",
-  "short_name": "武汉美食",
-  "description": "朋友共同整理的武汉美食地图",
+  "name": "美食地图",
+  "short_name": "美食地图",
+  "description": "朋友共同整理的美食地图",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
