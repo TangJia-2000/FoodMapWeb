@@ -131,7 +131,7 @@ function openDetail(id){
   const shareUrl=new URL(location.href); shareUrl.searchParams.set('place',String(id)); history.replaceState(null,'',shareUrl);
 }
 function openMapChooser(record){
-  const links=detailNavigationLinks(record,CONFIG), options=[['高德地图',links.amap],['百度地图',links.baidu],['腾讯地图',links.tencent]];
+  const links=detailNavigationLinks(record,CONFIG), options=[['高德地图',links.amap],['百度地图',links.baidu],['腾讯地图',links.tencent],['苹果地图',links.apple]];
   $('#mapChooserOptions').innerHTML=options.map(([name,href])=>`<a href="${href}" target="_blank" rel="noopener">${name}</a>`).join('');
   openDialog('mapChooserDialog');
 }
