@@ -12,6 +12,7 @@
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
   <link rel="icon" href="./assets/icons/icon-192.png">
   <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./city.css">
   <title>美食地图</title>
 </head>
 <body>
@@ -22,6 +23,7 @@
         <h1>美食地图</h1>
       </div>
       <div class="top-actions">
+        <button id="cityButton" class="city-button" type="button" aria-label="选择城市">选择城市 ▾</button>
         <button id="installBtn" class="icon-btn hidden" type="button" aria-label="安装到手机桌面" title="安装到手机桌面">＋</button>
         <button id="shareBtn" class="icon-btn" type="button" aria-label="分享" title="分享">↗</button>
       </div>
@@ -105,6 +107,13 @@
       <button class="nav-btn" data-view="stats" type="button"><span>▥</span><em>统计</em></button>
     </nav>
   </div>
+
+  <dialog id="cityDialog" class="sheet-dialog city-dialog">
+    <div class="sheet-handle"></div>
+    <button class="dialog-close" data-close-dialog="cityDialog" type="button" aria-label="关闭">×</button>
+    <div class="dialog-heading"><p class="eyebrow">已收录城市</p><h2>选择城市</h2></div>
+    <div id="cityOptions" class="city-options"></div>
+  </dialog>
 
   <dialog id="detailDialog" class="sheet-dialog">
     <div class="sheet-handle"></div>

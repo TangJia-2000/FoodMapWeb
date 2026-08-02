@@ -11,7 +11,9 @@ const state = {
   notes: JSON.parse(localStorage.getItem('foodmap.restaurantNotes.v1') || '{}'), recommendationOverrides: JSON.parse(localStorage.getItem('foodmap.recommendationOverrides.v1') || '{}'), scrolls: {map:0,list:0,favorites:0},
   coordinateGroups: new Map(), visiblePointMarkers: new Map(), layersHidden: false, mapInitCount: 0, pointLayerUpdates: 0, pointLayerRebuilds: 0, pickerGroup: null, pickerValues: [],
   markerColorOverrides: JSON.parse(localStorage.getItem('foodmap.markerColorOverrides.v1') || '{}'), markerIconsReady: false, markerZoomTier: 'low', markerReferenceMarker: null,
-  placeSearch: null, placeSearchPromise: null, placeSearchCache: new Map(), placeSearchResults: [], selectedTemporaryPlace: null, temporaryPlaceMarker: null, placeSearchInFlight: false
+  placeSearch: null, placeSearchPromise: null, placeSearchCache: new Map(), placeSearchResults: [], selectedTemporaryPlace: null, temporaryPlaceMarker: null, placeSearchInFlight: false,
+  cityCatalog: null, activeCityId: null, activeCityData: null, loadedCityCache: new Map(), cityLoadPromises: new Map(), cityRequestId: 0,
+  mapDisplayMode: 'CITY_DETAIL', citySummaryMarkers: new Map(), zoomTimer: null, navigationMode: false
 };
 
 const categoryEmoji = {
@@ -189,10 +191,12 @@ async function loadAmap(){
     window._AMapSecurityConfig={securityJsCode:CONFIG.amapSecurityJsCode};
     if(!window.AMapLoader){ await loadScript('https://webapi.amap.com/loader.js'); }
     const AMap=await window.AMapLoader.load({key:CONFIG.amapJsKey,version:'2.0',plugins:['AMap.Scale','AMap.ToolBar','AMap.Geolocation']});
-    state.amap=AMap; state.map=new AMap.Map('map',{zoom:CONFIG.zoom||11,center:CONFIG.center||[114.305393,30.593099],viewMode:'2D',resizeEnable:true}); state.mapInitCount++;
+    const activeCity=getCity(state.activeCityId);
+    state.amap=AMap; state.map=new AMap.Map('map',{zoom:activeCity?.default_zoom||CONFIG.zoom||11,center:activeCity?.center||CONFIG.center||[114.305393,30.593099],viewMode:'2D',resizeEnable:true}); state.mapInitCount++;
     state.map.addControl(new AMap.Scale()); state.map.addControl(new AMap.ToolBar({position:{top:'70px',right:'12px'}}));
-    state.map.on('complete',()=>{ state.mapReady=true; $('#mapFallback').classList.add('hidden'); scheduleMarkerRender(); });
-    state.map.on('zoomend',()=>{ const tier=markerZoomTier(); if(tier!==state.markerZoomTier){state.markerZoomTier=tier;scheduleMarkerRender();} });
+    state.map.on('complete',()=>{ state.mapReady=true; $('#mapFallback').classList.add('hidden'); restoreDisplayMode(); });
+    state.map.on('zoomend',()=>{ const tier=markerZoomTier(); if(tier!==state.markerZoomTier){state.markerZoomTier=tier;scheduleMarkerRender();} scheduleDisplayMode(); });
+    state.map.on('moveend',scheduleDisplayMode);
     preloadMarkerIcons().then(ready=>{ state.markerIconsReady=ready; if(state.mapReady)scheduleMarkerRender(); });
     $('#mapStatus').textContent=geoCount?`已加载 ${geoCount} 个餐厅坐标`:'地图已启用，餐厅坐标仍待匹配'; setTimeout(()=>$('#mapStatus').textContent='',2500);
   }catch(e){ console.error(e); showMapFallback('地图加载失败','请检查高德 Key、安全密钥、域名白名单和网络。'); }
@@ -207,6 +211,18 @@ async function loadRestaurantData(){
   try { if(!Array.isArray(window.EMBEDDED_RESTAURANTS)) await loadScript('./data/embedded-data.js'); if(Array.isArray(window.EMBEDDED_RESTAURANTS)) { toast('餐厅数据已切换到离线备用副本'); return window.EMBEDDED_RESTAURANTS; } } catch {}
   throw lastError;
 }
+function getCity(id){ return state.cityCatalog?.cities?.find(city=>city.id===id); }
+function enabledCities(){ return state.cityCatalog?.cities?.filter(city=>city.enabled!==false)||[]; }
+function cityContains(city, point){ const sw=city.bounds?.south_west, ne=city.bounds?.north_east; return !!sw&&!!ne&&point.lng>=sw[0]&&point.lng<=ne[0]&&point.lat>=sw[1]&&point.lat<=ne[1]; }
+function cityAtPoint(point){ const matches=enabledCities().filter(city=>cityContains(city,point)); return matches.sort((a,b)=>Math.hypot(a.center[0]-point.lng,a.center[1]-point.lat)-Math.hypot(b.center[0]-point.lng,b.center[1]-point.lat))[0]||null; }
+async function loadCityCatalog(){ const response=await fetch('./data/cities.json',{cache:'default'}); if(!response.ok) throw new Error(`city catalog HTTP ${response.status}`); const catalog=await response.json(); if(!Array.isArray(catalog.cities)||!catalog.cities.length) throw new Error('empty city catalog'); state.cityCatalog=catalog; return catalog; }
+function startupCityId(){ const params=new URLSearchParams(location.search), requested=params.get('city'), valid=id=>!!getCity(id); if(valid(requested)) return requested; if(requested){ params.delete('city'); const url=new URL(location.href); url.search=params.toString(); history.replaceState(null,'',url); } const saved=localStorage.getItem('foodmap.lastCity.v1'); return valid(saved)?saved:(valid(state.cityCatalog.default_city_id)?state.cityCatalog.default_city_id:enabledCities()[0]?.id); }
+async function loadCityData(cityId){ if(state.loadedCityCache.has(cityId)) return state.loadedCityCache.get(cityId); if(state.cityLoadPromises.has(cityId)) return state.cityLoadPromises.get(cityId); const city=getCity(cityId); if(!city) throw new Error(`unknown city ${cityId}`); const promise=(async()=>{ let lastError; for(let attempt=0;attempt<2;attempt++){ try{ const response=await fetch(`./${city.data_url}`,{cache:'default'}); if(!response.ok) throw new Error(`HTTP ${response.status}`); const payload=await response.json(), rows=Array.isArray(payload)?payload:payload.restaurants; if(!Array.isArray(rows)||rows.some(row=>row.city_slug!==cityId)) throw new Error('invalid city data'); state.loadedCityCache.set(cityId,rows); while(state.loadedCityCache.size>3) state.loadedCityCache.delete(state.loadedCityCache.keys().next().value); return rows; }catch(error){lastError=error; if(attempt===0) await new Promise(resolve=>setTimeout(resolve,250));} } throw lastError; })(); state.cityLoadPromises.set(cityId,promise); try{return await promise;} finally{state.cityLoadPromises.delete(cityId);} }
+function resetCityScopedState(){ state.selectedId=null; state.search=''; state.districts=[]; state.businessAreas=[]; state.categories=[]; state.recommendations=[]; $('#searchInput').value=''; $('#clearSearchBtn').classList.add('hidden'); clearTemporaryPlace(); }
+function updateCityUrl(cityId, mode){ const url=new URL(location.href); url.searchParams.set('city',cityId); (mode==='push'?history.pushState:history.replaceState).call(history,null,'',url); }
+function renderCityChooser(){ const current=state.activeCityId; $('#cityOptions').innerHTML=enabledCities().map(city=>`<button class="city-option ${city.id===current?'selected':''}" type="button" data-city-id="${city.id}"><span>${escapeHtml(city.display_name||city.name)}</span><small>${city.restaurant_count} 家</small></button>`).join(''); $$('.city-option').forEach(button=>button.addEventListener('click',()=>{closeDialog('cityDialog');activateCity(button.dataset.cityId,{historyMode:'push',focus:true});})); $('#cityButton').textContent=`${getCity(current)?.display_name||'选择城市'} ▾`; }
+function applyCityRows(cityId, rows){ state.activeCityData=rows; state.records=rows; state.filtered=[...rows]; buildCoordinateGroups(); populateFilters(); sortRecords(); renderAll(); renderCityChooser(); }
+async function activateCity(cityId,{historyMode='replace',focus=false}={}){ const city=getCity(cityId); if(!city) return; const requestId=++state.cityRequestId; hideRestaurantLayers(); resetCityScopedState(); state.activeCityId=cityId; localStorage.setItem('foodmap.lastCity.v1',cityId); if(historyMode) updateCityUrl(cityId,historyMode); if(state.map&&focus) state.map.setZoomAndCenter(city.default_zoom,city.center); try{ const rows=await loadCityData(cityId); if(requestId!==state.cityRequestId) return; applyCityRows(cityId,rows); $('#mapStatus').textContent=''; restoreDisplayMode(); }catch(error){ if(requestId!==state.cityRequestId)return; state.records=[];state.filtered=[];buildCoordinateGroups();renderAll(); $('#mapStatus').textContent='城市数据加载失败，请重试'; console.error(error); } }
 function showMapFallback(title,text){ $('#mapFallbackTitle').textContent=title; $('#mapFallbackText').textContent=text; $('#mapFallback').classList.remove('hidden'); }
 function normalizedPosition(record){
   const temporary=record?.isTemporaryPlace===true;
@@ -279,14 +295,19 @@ function renderPointMarkers(renderId){ if(!state.map||!state.amap||!state.mapRea
 function clearVisiblePointMarkers(){ if(state.map&&state.visiblePointMarkers.size)state.map.remove([...state.visiblePointMarkers.values()].map(item=>item.marker)); state.visiblePointMarkers.clear(); }
 function hideRestaurantLayers(){ state.layersHidden=true; clearVisiblePointMarkers(); state.highlightMarker?.hide(); window.__FOOD_MAP_DIAGNOSTICS={...(window.__FOOD_MAP_DIAGNOSTICS||{}),restaurantLayersHidden:true,visibleRestaurantPoints:0}; }
 function showRestaurantLayers(){ state.layersHidden=false; scheduleMarkerRender(); if(state.selectedId)selectMarker(state.selectedId); }
+function hideCityOverview(){ for(const marker of state.citySummaryMarkers.values()) marker.hide?.(); }
+function showCityOverview(){ if(!state.map||!state.amap||!state.mapReady)return; state.mapDisplayMode='CITY_OVERVIEW'; hideRestaurantLayers(); $('#nearbyRail').classList.add('hidden'); for(const city of enabledCities()){ let marker=state.citySummaryMarkers.get(city.id); if(!marker){ const content=`<button class="city-summary-marker" type="button" data-city-summary="${city.id}"><strong>${escapeHtml(city.display_name||city.name)}</strong><span>${city.restaurant_count} 家</span></button>`; marker=new state.amap.Marker({position:city.center,content,anchor:'center',offset:new state.amap.Pixel(0,0),zIndex:140,title:`${city.display_name||city.name} ${city.restaurant_count} 家`}); marker.on('click',()=>activateCity(city.id,{historyMode:'push',focus:true})); state.map.add(marker); state.citySummaryMarkers.set(city.id,marker); } marker.show?.(); } window.__FOOD_MAP_DIAGNOSTICS={...(window.__FOOD_MAP_DIAGNOSTICS||{}),displayMode:state.mapDisplayMode,visibleCityMarkerCount:state.citySummaryMarkers.size,visibleRestaurantMarkerCount:0}; }
+function showRestaurantLayer(){ state.mapDisplayMode='CITY_DETAIL'; hideCityOverview(); $('#nearbyRail').classList.remove('hidden'); showRestaurantLayers(); }
+function scheduleDisplayMode(){ clearTimeout(state.zoomTimer); state.zoomTimer=setTimeout(restoreDisplayMode,150); }
+function restoreDisplayMode(){ if(!state.map||!state.mapReady)return; if(state.route||state.navigationMode){hideCityOverview();hideRestaurantLayers();return;} const zoom=state.map.getZoom?.()??CONFIG.zoom??11, previous=state.mapDisplayMode; if((previous==='CITY_DETAIL'&&zoom<=8.8)||(previous==='CITY_OVERVIEW'&&zoom<10)){showCityOverview();return;} if(zoom>=10){ const center=state.map.getCenter?.(); if(!center){showRestaurantLayer();return;} const point={lng:Number(center.lng??center.getLng?.()),lat:Number(center.lat??center.getLat?.())}, city=cityAtPoint(point); if(!city){hideCityOverview();hideRestaurantLayers();state.mapDisplayMode='CITY_DETAIL';$('#mapStatus').textContent='该区域暂未收录城市';return;} if(city.id!==state.activeCityId){activateCity(city.id,{historyMode:'replace',focus:false});return;} showRestaurantLayer(); } }
 function selectMarker(id){ const record=state.records.find(r=>r.id===id); if(!record||!state.map||!hasCoords(record)||state.layersHidden)return; const position=normalizedPosition(record),presentation=markerPresentation({records:[record]}); if(!state.highlightMarker){state.highlightMarker=new state.amap.Marker({position,icon:markerIcon(presentation),offset:new state.amap.Pixel(0,0),anchor:presentation.anchor,zIndex:300});state.map.add(state.highlightMarker);}else{state.highlightMarker.setPosition(position);state.highlightMarker.setIcon(markerIcon(presentation));state.highlightMarker.show();} state.highlightMarker.setAnimation?.('AMAP_ANIMATION_BOUNCE');setTimeout(()=>state.highlightMarker?.setAnimation?.('AMAP_ANIMATION_NONE'),900); }
 function openCoordinateGroup(group){ $('#pointGroupTitle').textContent=`同一位置的 ${group.records.length} 家店`; renderList('#pointGroupList',group.records,id=>{closeDialog('pointGroupDialog');openDetail(id);}); openDialog('pointGroupDialog'); }
 function fitMap(){ if(!state.map){ toast('地图尚未启用'); return; } const markers=[...state.visiblePointMarkers.values()].map(item=>item.marker); if(markers.length) state.map.setFitView(markers,false,[60,45,150,45],12); else state.map.setZoomAndCenter(CONFIG.zoom||11,CONFIG.center); }
-function clearRoute({restore=true}={}){ if(state.route){ state.route.clear?.(); state.route=null; } state.routeRecord=null; $('#routePanel').classList.add('hidden'); $('#routePanel').innerHTML=''; if(restore){showRestaurantLayers();if(state.selectedTemporaryPlace)renderTemporaryPlacePanel(state.selectedTemporaryPlace);} }
+function clearRoute({restore=true}={}){ if(state.route){ state.route.clear?.(); state.route=null; } state.navigationMode=false; state.routeRecord=null; $('#routePanel').classList.add('hidden'); $('#routePanel').innerHTML=''; if(restore){restoreDisplayMode();if(state.selectedTemporaryPlace)renderTemporaryPlacePanel(state.selectedTemporaryPlace);} }
 async function startRoute(record,mode='walk'){
   if(!state.map || !normalizedPosition(record)){ toast('该餐厅暂无可用坐标，请使用地图软件导航'); return; }
   closeDialog('detailDialog'); setView('map');
-  clearRoute({restore:false}); hideRestaurantLayers();
+  clearRoute({restore:false}); state.navigationMode=true; hideCityOverview(); hideRestaurantLayers();
   if(!state.location){ await locateUser(); }
   if(!state.location){ toast('定位失败，请使用地图软件导航'); showRestaurantLayers(); return; }
   const AMap=state.amap, target=normalizedPosition(record); const plugin=mode==='drive'?'AMap.Driving':mode==='ride'?'AMap.Riding':'AMap.Walking';
@@ -340,6 +361,7 @@ function bindEvents(){
   $('#applyFiltersBtn').addEventListener('click',applyFilterDialog); $('#clearFiltersDialogBtn').addEventListener('click',clearFilters); $('#resetFiltersBtn').addEventListener('click',clearFilters);
   $('#sortSelect').addEventListener('change',e=>{ state.sort=e.target.value; sortRecords(); renderAll(); });
   $('#randomBtn').addEventListener('click',randomRestaurant); $('#locateBtn').addEventListener('click',locateUser); $('#fitMapBtn').addEventListener('click',fitMap);
+  $('#cityButton').addEventListener('click',()=>{renderCityChooser();openDialog('cityDialog');});
   $('#placeSearchForm').addEventListener('submit',event=>{event.preventDefault();submitPlaceSearch();});
   $('#clearPlaceSearchBtn').addEventListener('click',clearTemporaryPlace);
   $('#openMapListBtn').addEventListener('click',openMapList); $('#mapListResetBtn').addEventListener('click',()=>{clearFilters();openMapList();});
@@ -355,14 +377,14 @@ function bindEvents(){
   $$('.sheet-dialog').forEach(d=>d.addEventListener('click',e=>{ if(e.target===d) d.close(); }));
   $('#installBtn').addEventListener('click',async()=>{ if(state.deferredInstallPrompt){ state.deferredInstallPrompt.prompt(); await state.deferredInstallPrompt.userChoice; state.deferredInstallPrompt=null; $('#installBtn').classList.add('hidden'); }else installHelp(); });
   window.addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); state.deferredInstallPrompt=e; $('#installBtn').classList.remove('hidden'); });
+  window.addEventListener('popstate',()=>{const id=startupCityId();if(id&&id!==state.activeCityId)activateCity(id,{historyMode:null,focus:true});});
   window.addEventListener('appinstalled',()=>toast('已安装到手机'));
 }
 
 async function init(){
   bindEvents();
   try{
-    state.records=await loadRestaurantData(); buildCoordinateGroups();
-    state.filtered=[...state.records]; populateFilters(); sortRecords(); renderAll();
+    await loadCityCatalog(); const cityId=startupCityId(); if(!cityId) throw new Error('no enabled city'); await activateCity(cityId,{historyMode:'replace',focus:false});
     const place=new URLSearchParams(location.search).get('place'); if(place) setTimeout(()=>openDetail(place),100);
     setTimeout(()=>loadAmap(),0);
   }catch(e){ console.error(e); $('#resultHint').textContent='数据加载失败'; showMapFallback('数据加载失败','请检查 data/restaurants.json 是否存在。'); }

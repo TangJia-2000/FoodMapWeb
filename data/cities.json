@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "default_city_id": "wuhan",
+  "total_cities": 1,
+  "total_restaurants": 506,
+  "cities": [
+    {
+      "id": "wuhan",
+      "city_code": "420100",
+      "name": "武汉市",
+      "display_name": "武汉",
+      "province_code": "420000",
+      "province_name": "湖北省",
+      "center": [
+        114.305393,
+        30.593099
+      ],
+      "bounds": {
+        "south_west": [
+          113.69,
+          29.97
+        ],
+        "north_east": [
+          115.08,
+          31.36
+        ]
+      },
+      "default_zoom": 11.5,
+      "detail_min_zoom": 10,
+      "restaurant_count": 506,
+      "data_url": "data/cities/wuhan.json?v=d235ee4583ff",
+      "data_version": "d235ee4583ff"
+    }
+  ]
+}
